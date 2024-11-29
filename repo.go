@@ -43,7 +43,7 @@ type Repository[T any] interface {
 	DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
 	ForceDelete(ctx context.Context, record T) error
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
-	SetID(T, uuid.UUID)
+	Handlers() ModelHandlers[T]
 }
 
 type repo[T any] struct {
@@ -75,8 +75,8 @@ func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error)
 	return records, nil
 }
 
-func (r *repo[T]) SetID(record T, id uuid.UUID) {
-	r.handlers.SetID(record, id)
+func (r *repo[T]) Handlers() ModelHandlers[T] {
+	return r.handlers
 }
 
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {

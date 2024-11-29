@@ -43,6 +43,7 @@ type Repository[T any] interface {
 	DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
 	ForceDelete(ctx context.Context, record T) error
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
+	SetID(T, uuid.UUID)
 }
 
 type repo[T any] struct {
@@ -72,6 +73,10 @@ func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error)
 	}
 
 	return records, nil
+}
+
+func (r *repo[T]) SetID(record T, id uuid.UUID) {
+	r.handlers.SetID(record, id)
 }
 
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {
@@ -194,15 +199,19 @@ func (r *repo[T]) UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 	for _, c := range criteria {
 		q.Apply(c)
 	}
+
 	res, err := q.OmitZero().WherePK().Returning("*").Exec(ctx)
+
 	if err != nil {
 		var zero T
 		return zero, err
 	}
+
 	if err = SQLExpectedCount(res, 1); err != nil {
 		var zero T
 		return zero, err
 	}
+
 	return record, nil
 }
 

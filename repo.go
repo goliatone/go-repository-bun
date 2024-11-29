@@ -25,6 +25,8 @@ type Repository[T any] interface {
 	GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (T, error)
 	GetByID(ctx context.Context, id string, criteria ...SelectCriteria) (T, error)
 	GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...SelectCriteria) (T, error)
+	List(ctx context.Context, criteria ...SelectCriteria) ([]T, int, error)
+	ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) ([]T, int, error)
 	Create(ctx context.Context, record T) (T, error)
 	CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
 	GetOrCreate(ctx context.Context, record T) (T, error)
@@ -41,8 +43,6 @@ type Repository[T any] interface {
 	DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
 	ForceDelete(ctx context.Context, record T) error
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
-
-	SetID(T, uuid.UUID)
 }
 
 type repo[T any] struct {
@@ -74,10 +74,6 @@ func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error)
 	return records, nil
 }
 
-func (r *repo[T]) SetID(record T, id uuid.UUID) {
-	r.handlers.SetID(record, id)
-}
-
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {
 	return r.GetTx(ctx, r.db, criteria...)
 }
@@ -104,6 +100,34 @@ func (r *repo[T]) GetByID(ctx context.Context, id string, criteria ...SelectCrit
 func (r *repo[T]) GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...SelectCriteria) (T, error) {
 	criteria = append([]SelectCriteria{SelectByID(id)}, criteria...)
 	return r.GetTx(ctx, tx, criteria...)
+}
+
+func (r *repo[T]) List(ctx context.Context, criteria ...SelectCriteria) ([]T, int, error) {
+	return r.ListTx(ctx, r.db, criteria...)
+}
+
+func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) ([]T, int, error) {
+	records := []T{}
+
+	q := r.db.NewSelect().
+		Model(&records)
+
+	// Set Limit Offset default values
+	// if we apply again in criteria, we override
+	q.Limit(25).Offset(0)
+
+	for _, c := range criteria {
+		q.Apply(c)
+	}
+
+	var total int
+	var err error
+
+	if total, err = q.ScanAndCount(ctx); err != nil {
+		return nil, total, err
+	}
+
+	return records, total, nil
 }
 
 func (r *repo[T]) Create(ctx context.Context, record T) (T, error) {

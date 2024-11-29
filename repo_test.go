@@ -14,7 +14,6 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
-// TestUser represents a user in the system.
 type TestUser struct {
 	bun.BaseModel `bun:"table:test_users,alias:u"`
 
@@ -27,7 +26,6 @@ type TestUser struct {
 	UpdatedAt time.Time `bun:"updated_at,notnull"`
 }
 
-// TestCompany represents a company in the system.
 type TestCompany struct {
 	bun.BaseModel `bun:"table:test_companies,alias:c"`
 
@@ -39,7 +37,6 @@ type TestCompany struct {
 	UpdatedAt time.Time `bun:"updated_at,notnull"`
 }
 
-// Define ModelHandlers for TestUser
 func newTestUserRepository(db bun.IDB) Repository[*TestUser] {
 	handlers := ModelHandlers[*TestUser]{
 		NewRecord: func() *TestUser {
@@ -58,7 +55,6 @@ func newTestUserRepository(db bun.IDB) Repository[*TestUser] {
 	return NewRepository[*TestUser](db, handlers)
 }
 
-// Define ModelHandlers for TestCompany
 func newTestCompanyRepository(db bun.IDB) Repository[*TestCompany] {
 	handlers := ModelHandlers[*TestCompany]{
 		NewRecord: func() *TestCompany {
@@ -88,7 +84,6 @@ func TestMain(m *testing.M) {
 
 	db = bun.NewDB(sqldb, sqlitedialect.New())
 
-	// Run tests
 	code := m.Run()
 
 	os.Exit(code)
@@ -108,7 +103,6 @@ func TestRepository_Create(t *testing.T) {
 	userRepo := newTestUserRepository(db)
 	companyRepo := newTestCompanyRepository(db)
 
-	// Create a company
 	company := &TestCompany{
 		ID:   uuid.New(),
 		Name: "Test Company",
@@ -117,13 +111,13 @@ func TestRepository_Create(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, createdCompany.ID)
 
-	// Create a user associated with the company
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "John Doe",
 		Email:     "john.doe@example.com",
 		CompanyID: createdCompany.ID,
 	}
+
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
 	assert.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, createdUser.ID)
@@ -136,7 +130,6 @@ func TestRepository_Get(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create a user
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Jane Smith",
@@ -159,7 +152,6 @@ func TestRepository_GetByIdentifier(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create a user
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Test User",
@@ -185,12 +177,10 @@ func TestRepository_GetByIdentifierTx(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Begin a transaction
 	tx, err := db.BeginTx(ctx, nil)
 	assert.NoError(t, err)
 	defer tx.Rollback()
 
-	// Create a user within the transaction
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Transactional User",
@@ -209,7 +199,6 @@ func TestRepository_GetByIdentifierTx(t *testing.T) {
 	assert.Equal(t, user.Name, retrievedUser.Name)
 	assert.Equal(t, user.Email, retrievedUser.Email)
 
-	// Commit the transaction
 	err = tx.Commit()
 	assert.NoError(t, err)
 }
@@ -220,7 +209,7 @@ func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Attempt to retrieve a user with a non-existent email
+	// Attempt to retrieve a user with a non-existent email should fail
 	nonExistentEmail := "non.existent@example.com"
 	_, err := userRepo.GetByIdentifier(ctx, nonExistentEmail)
 	assert.Error(t, err)
@@ -233,7 +222,6 @@ func TestRepository_Update(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create a user
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Alice Johnson",
@@ -243,7 +231,6 @@ func TestRepository_Update(t *testing.T) {
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
 	assert.NoError(t, err)
 
-	// Update the user's email
 	createdUser.Email = "alice.j@example.com"
 	updatedUser, err := userRepo.UpdateTx(ctx, db, createdUser)
 	assert.NoError(t, err)
@@ -256,7 +243,6 @@ func TestRepository_Delete(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create a user
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Bob Brown",
@@ -266,11 +252,10 @@ func TestRepository_Delete(t *testing.T) {
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
 	assert.NoError(t, err)
 
-	// Delete the user
 	err = userRepo.DeleteTx(ctx, db, createdUser)
 	assert.NoError(t, err)
 
-	// Attempt to retrieve the deleted user
+	// Attempt to retrieve the deleted user should fail
 	_, err = userRepo.GetByIDTx(ctx, db, createdUser.ID.String())
 	assert.Error(t, err)
 	assert.True(t, IsRecordNotFound(err))
@@ -305,7 +290,6 @@ func TestRepository_DeleteWhere(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create multiple users
 	users := []*TestUser{
 		{ID: uuid.New(), Name: "User One", Email: "user1@example.com", CompanyID: uuid.New()},
 		{ID: uuid.New(), Name: "User Two", Email: "user2@example.com", CompanyID: uuid.New()},
@@ -317,7 +301,6 @@ func TestRepository_DeleteWhere(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// Delete users with email containing 'user2'
 	err := userRepo.DeleteWhereTx(ctx, db, func(q *bun.DeleteQuery) *bun.DeleteQuery {
 		return q.Where("email = ?", "user2@example.com")
 	})
@@ -337,9 +320,8 @@ func TestRepository_TransactionCommit(t *testing.T) {
 
 	tx, err := db.BeginTx(ctx, nil)
 	assert.NoError(t, err)
-	defer tx.Rollback() // Ensure the transaction is rolled back if not committed
+	defer tx.Rollback()
 
-	// Create a user within the transaction
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Transactional User",
@@ -351,7 +333,6 @@ func TestRepository_TransactionCommit(t *testing.T) {
 	createdUser, err := userRepo.CreateTx(ctx, tx, user)
 	assert.NoError(t, err)
 
-	// Commit the transaction
 	err = tx.Commit()
 	assert.NoError(t, err)
 
@@ -370,9 +351,8 @@ func TestRepository_TransactionRollback(t *testing.T) {
 
 	tx, err := db.BeginTx(ctx, nil)
 	assert.NoError(t, err)
-	defer tx.Rollback() // Ensure the transaction is rolled back
+	defer tx.Rollback()
 
-	// Create a user within the transaction
 	user := &TestUser{
 		ID:        uuid.New(),
 		Name:      "Rollback User",
@@ -384,7 +364,6 @@ func TestRepository_TransactionRollback(t *testing.T) {
 	createdUser, err := userRepo.CreateTx(ctx, tx, user)
 	assert.NoError(t, err)
 
-	// Roll back the transaction
 	err = tx.Rollback()
 	assert.NoError(t, err)
 
@@ -400,7 +379,6 @@ func TestRepository_Raw(t *testing.T) {
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
 
-	// Create multiple users
 	users := []*TestUser{
 		{ID: uuid.New(), Name: "Raw User One", Email: "raw1@example.com", CompanyID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		{ID: uuid.New(), Name: "Raw User Two", Email: "raw2@example.com", CompanyID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now()},
@@ -412,22 +390,113 @@ func TestRepository_Raw(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// Use the Raw method to retrieve users with email containing 'raw'
 	query := "SELECT * FROM test_users WHERE email LIKE ?"
 	rawUsers, err := userRepo.Raw(ctx, query, "raw%")
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(rawUsers))
 
-	// Verify that the returned users match the condition
 	for _, user := range rawUsers {
 		assert.Contains(t, user.Email, "raw")
 	}
 }
 
+func TestRepository_Upsert(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Upsert User",
+		Email:     "upsert.user@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	upsertedUser, err := userRepo.Upsert(ctx, user)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, upsertedUser.ID)
+	assert.Equal(t, user.Name, upsertedUser.Name)
+
+	upsertedUser.Name = "Upsert User Updated"
+	upsertedUser.UpdatedAt = time.Now()
+
+	upsertedUser, err = userRepo.Upsert(ctx, upsertedUser)
+	assert.NoError(t, err)
+	assert.Equal(t, "Upsert User Updated", upsertedUser.Name)
+
+	retrievedUser, err := userRepo.GetByIdentifier(ctx, upsertedUser.Email)
+	assert.NoError(t, err)
+	assert.Equal(t, upsertedUser.Name, retrievedUser.Name)
+}
+
+func TestRepository_UpsertTx(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	tx, err := db.BeginTx(ctx, nil)
+	assert.NoError(t, err)
+	defer tx.Rollback()
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "UpsertTx User",
+		Email:     "upserttx.user@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	upsertedUser, err := userRepo.UpsertTx(ctx, tx, user)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, upsertedUser.ID)
+	assert.Equal(t, user.Name, upsertedUser.Name)
+
+	upsertedUser.Name = "UpsertTx User Updated"
+	upsertedUser.UpdatedAt = time.Now()
+
+	upsertedUser, err = userRepo.UpsertTx(ctx, tx, upsertedUser)
+	assert.NoError(t, err)
+	assert.Equal(t, "UpsertTx User Updated", upsertedUser.Name)
+
+	err = tx.Commit()
+	assert.NoError(t, err)
+
+	retrievedUser, err := userRepo.GetByIdentifier(ctx, upsertedUser.Email)
+	assert.NoError(t, err)
+	assert.Equal(t, upsertedUser.Name, retrievedUser.Name)
+}
+
+func TestRepository_Upsert_Insert(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "New Upsert User",
+		Email:     "new.upsert.user@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	upsertedUser, err := userRepo.Upsert(ctx, user)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, upsertedUser.ID)
+	assert.Equal(t, user.Name, upsertedUser.Name)
+
+	// Verify that the user exists in the database
+	retrievedUser, err := userRepo.GetByIdentifier(ctx, user.Email)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, retrievedUser.ID)
+}
+
 func setupTestData(t *testing.T) {
 	ctx := context.Background()
 
-	// Create tables
 	if err := createSchema(ctx, db); err != nil {
 		t.Fatalf("Failed to create tables: %v", err)
 	}

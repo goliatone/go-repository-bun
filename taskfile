@@ -198,7 +198,7 @@ function version:bump {
             return 2
     esac
 
-    echo "$major.$minor.$patch"
+    echo "$major.$minor.$patch" > "${VERSION_FILE}"
 }
 
 function version:check {
@@ -228,7 +228,7 @@ function help {
 
     prog="$0"
     me=$(basename "$prog")
-    
+
     grep -e '^##[[:space:]]' -e '^##$' "$prog" | sed -e 's/^##//' -e "s/_PROG_/$me/" 2>&1 | less
 }
 

@@ -23,7 +23,9 @@ type Repository[T any] interface {
 	Raw(ctx context.Context, sql string, args ...any) ([]T, error)
 	Get(ctx context.Context, criteria ...SelectCriteria) (T, error)
 	GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (T, error)
+	GetByID(ctx context.Context, id string, criteria ...SelectCriteria) (T, error)
 	GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...SelectCriteria) (T, error)
+	Create(ctx context.Context, record T) (T, error)
 	CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
 	GetOrCreate(ctx context.Context, record T) (T, error)
 	GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
@@ -39,6 +41,8 @@ type Repository[T any] interface {
 	DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
 	ForceDelete(ctx context.Context, record T) error
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
+
+	SetID(T, uuid.UUID)
 }
 
 type repo[T any] struct {
@@ -70,6 +74,10 @@ func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error)
 	return records, nil
 }
 
+func (r *repo[T]) SetID(record T, id uuid.UUID) {
+	r.handlers.SetID(record, id)
+}
+
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {
 	return r.GetTx(ctx, r.db, criteria...)
 }
@@ -89,9 +97,17 @@ func (r *repo[T]) GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrite
 	return record, nil
 }
 
+func (r *repo[T]) GetByID(ctx context.Context, id string, criteria ...SelectCriteria) (T, error) {
+	return r.GetByIDTx(ctx, r.db, id, criteria...)
+}
+
 func (r *repo[T]) GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...SelectCriteria) (T, error) {
 	criteria = append([]SelectCriteria{SelectByID(id)}, criteria...)
 	return r.GetTx(ctx, tx, criteria...)
+}
+
+func (r *repo[T]) Create(ctx context.Context, record T) (T, error) {
+	return r.CreateTx(ctx, r.db, record)
 }
 
 func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {

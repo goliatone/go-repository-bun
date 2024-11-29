@@ -42,10 +42,8 @@ type Repository[T any] interface {
 }
 
 type repo[T any] struct {
-	db        bun.IDB
-	newRecord func() T
-	getID     func(record T) uuid.UUID
-	setID     func(record T, id uuid.UUID)
+	db       bun.IDB
+	handlers ModelHandlers[T]
 }
 
 type ModelHandlers[T any] struct {
@@ -54,15 +52,20 @@ type ModelHandlers[T any] struct {
 	SetID     func(T, uuid.UUID)
 }
 
-func NewRepository[T any](db bun.IDB, newRecord func() T, getID func(T) uuid.UUID, setID func(T, uuid.UUID)) Repository[T] {
-	return &repo[T]{db: db, newRecord: newRecord, getID: getID, setID: setID}
+func NewRepository[T any](db bun.IDB, handlers ModelHandlers[T]) Repository[T] {
+	return &repo[T]{
+		db:       db,
+		handlers: handlers,
+	}
 }
 
 func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error) {
-	var records []T
+	records := []T{}
+
 	if err := r.db.NewRaw(sql, args...).Scan(ctx, &records); err != nil {
 		return nil, err
 	}
+
 	return records, nil
 }
 
@@ -71,7 +74,7 @@ func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error
 }
 
 func (r *repo[T]) GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (T, error) {
-	record := r.newRecord()
+	record := r.handlers.NewRecord()
 	q := tx.NewSelect().Model(record)
 
 	for _, c := range criteria {
@@ -91,10 +94,10 @@ func (r *repo[T]) GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria
 }
 
 func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {
-	id := r.getID(record)
+	id := r.handlers.GetID(record)
 	if id == uuid.Nil {
 		newID := uuid.New()
-		r.setID(record, newID)
+		r.handlers.SetID(record, newID)
 	}
 	_, err := tx.NewInsert().Model(record).Returning("*").Exec(ctx)
 	return record, err
@@ -105,8 +108,8 @@ func (r *repo[T]) GetOrCreate(ctx context.Context, record T) (T, error) {
 }
 
 func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {
-	id := r.getID(record).String()
-	existing, err := r.GetByIdentifierTx(ctx, tx, id)
+	id := r.handlers.GetID(record)
+	existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
 	if err == nil {
 		return existing, nil
 	}
@@ -126,7 +129,7 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 	if isUUID(identifier) {
 		column = "id"
 	}
-	record := r.newRecord()
+	record := r.handlers.NewRecord()
 	q := tx.NewSelect().Model(record)
 
 	for _, c := range criteria {
@@ -167,10 +170,10 @@ func (r *repo[T]) Upsert(ctx context.Context, record T, criteria ...UpdateCriter
 }
 
 func (r *repo[T]) UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error) {
-	id := r.getID(record).String()
-	existing, err := r.GetByIdentifierTx(ctx, tx, id)
+	id := r.handlers.GetID(record)
+	existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
 	if err == nil {
-		r.setID(record, r.getID(existing))
+		r.handlers.SetID(record, r.handlers.GetID(existing))
 		return r.UpdateTx(ctx, tx, record, criteria...)
 	}
 	if !IsRecordNotFound(err) {
@@ -195,7 +198,7 @@ func (r *repo[T]) DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) e
 }
 
 func (r *repo[T]) DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error {
-	record := r.newRecord()
+	record := r.handlers.NewRecord()
 	q := tx.NewDelete().Model(record)
 	for _, c := range criteria {
 		q = c(q)

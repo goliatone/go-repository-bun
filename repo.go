@@ -109,7 +109,7 @@ func (r *repo[T]) List(ctx context.Context, criteria ...SelectCriteria) ([]T, in
 func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) ([]T, int, error) {
 	records := []T{}
 
-	q := r.db.NewSelect().
+	q := tx.NewSelect().
 		Model(&records)
 
 	// Set Limit Offset default values

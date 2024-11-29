@@ -238,6 +238,30 @@ func TestRepository_Update(t *testing.T) {
 	assert.Equal(t, "alice.j@example.com", updatedUser.Email)
 }
 
+func TestRepository_Update2(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Alice Johnson",
+		Email:     "alice.johnson@example.com",
+		CompanyID: uuid.New(),
+	}
+	createdUser, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID.String(), createdUser.ID.String())
+
+	payload := &TestUser{}
+	userRepo.SetID(payload, user.ID)
+	payload.Email = "alice.j@example.com"
+	updatedUser, err := userRepo.UpdateTx(ctx, db, payload, UpdateByID(user.ID.String()))
+	assert.NoError(t, err)
+	assert.Equal(t, "alice.j@example.com", updatedUser.Email)
+}
+
 func TestRepository_Delete(t *testing.T) {
 	setupTestData(t)
 

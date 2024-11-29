@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -494,9 +495,114 @@ func TestRepository_Upsert_Insert(t *testing.T) {
 	assert.Equal(t, user.ID, retrievedUser.ID)
 }
 
+func TestRepository_List(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	now := time.Now()
+	for i := 1; i <= 30; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	users, total, err := userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 30, total, "Total should reflect all records")
+
+	// Test List with custom limit and offset
+	criteria := func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Limit(10).Offset(5)
+	}
+	users, total, err = userRepo.List(ctx, criteria)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(users), "Should return 10 users")
+	assert.Equal(t, 30, total, "Total should still reflect all records")
+
+	assert.Equal(t, "User 6", users[0].Name, "First user should be 'User 6'")
+	assert.Equal(t, "User 15", users[9].Name, "Last user should be 'User 15'")
+
+	// Test List with selection criteria
+	criteria = func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where("email LIKE ?", "user1%")
+	}
+	users, total, err = userRepo.List(ctx, criteria)
+	assert.NoError(t, err)
+	assert.Equal(t, 11, len(users), "Should return users with emails starting with 'user1'")
+	assert.Equal(t, 11, total, "Total should reflect matching records")
+}
+
+func TestRepository_ListTx(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	now := time.Now()
+	for i := 1; i <= 30; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	assert.NoError(t, err)
+	defer tx.Rollback()
+
+	for i := 31; i <= 35; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, tx, user)
+		assert.NoError(t, err)
+	}
+
+	users, total, err := userRepo.ListTx(ctx, tx)
+	assert.NoError(t, err)
+	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 35, total, "Total should include records in transaction")
+
+	err = tx.Commit()
+	assert.NoError(t, err)
+
+	// Verify that the new records are persisted
+	users, total, err = userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 35, total, "Total should reflect all records")
+}
+
 func setupTestData(t *testing.T) {
 	ctx := context.Background()
 
+	// Drop existing tables
+	if err := dropSchema(ctx, db); err != nil {
+		t.Fatalf("Failed to drop tables: %v", err)
+	}
+
+	// Create tables
 	if err := createSchema(ctx, db); err != nil {
 		t.Fatalf("Failed to create tables: %v", err)
 	}
@@ -509,7 +615,21 @@ func createSchema(ctx context.Context, db *bun.DB) error {
 	}
 
 	for _, model := range models {
-		if _, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx); err != nil {
+		if _, err := db.NewCreateTable().Model(model).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func dropSchema(ctx context.Context, db *bun.DB) error {
+	models := []interface{}{
+		(*TestUser)(nil),
+		(*TestCompany)(nil),
+	}
+
+	for _, model := range models {
+		if _, err := db.NewDropTable().Model(model).IfExists().Exec(ctx); err != nil {
 			return err
 		}
 	}

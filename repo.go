@@ -47,9 +47,10 @@ type repo[T any] struct {
 }
 
 type ModelHandlers[T any] struct {
-	NewRecord func() T
-	GetID     func(T) uuid.UUID
-	SetID     func(T, uuid.UUID)
+	NewRecord     func() T
+	GetID         func(T) uuid.UUID
+	SetID         func(T, uuid.UUID)
+	GetIdentifier func() string
 }
 
 func NewRepository[T any](db bun.IDB, handlers ModelHandlers[T]) Repository[T] {
@@ -125,7 +126,7 @@ func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criter
 }
 
 func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error) {
-	column := "identifier"
+	column := r.handlers.GetIdentifier()
 	if isUUID(identifier) {
 		column = "id"
 	}

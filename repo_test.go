@@ -255,7 +255,7 @@ func TestRepository_Update2(t *testing.T) {
 	assert.Equal(t, user.ID.String(), createdUser.ID.String())
 
 	payload := &TestUser{}
-	userRepo.SetID(payload, user.ID)
+	userRepo.Handlers().SetID(payload, user.ID)
 	payload.Email = "alice.j@example.com"
 	updatedUser, err := userRepo.UpdateTx(ctx, db, payload, UpdateByID(user.ID.String()))
 	assert.NoError(t, err)

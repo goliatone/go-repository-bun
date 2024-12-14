@@ -14,15 +14,15 @@ func quote(s string) string {
 	return "\"" + s + "\""
 }
 
-// Paginate will paginate through a result set
-func Paginate(limit, offset int) SelectCriteria {
+// SelectPaginate will paginate through a result set
+func SelectPaginate(limit, offset int) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.Limit(limit).Offset(offset)
 	}
 }
 
-// Relation will add a LEFT JOIN relation
-func Relation(model string, criteria ...SelectCriteria) SelectCriteria {
+// SelectRelation will add a LEFT JOIN relation
+func SelectRelation(model string, criteria ...SelectCriteria) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
 		selector := []func(*bun.SelectQuery) *bun.SelectQuery{}
 

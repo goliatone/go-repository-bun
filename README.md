@@ -43,6 +43,9 @@ handlers := ModelHandlers[*User]{
         return &User{}
     },
     GetID: func(record *User) uuid.UUID {
+        if record == nil {
+            return uuid.Nil
+        }
         return record.ID
     },
     SetID: func(record *User, id uuid.UUID) {

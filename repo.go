@@ -27,22 +27,39 @@ type Repository[T any] interface {
 	GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...SelectCriteria) (T, error)
 	List(ctx context.Context, criteria ...SelectCriteria) ([]T, int, error)
 	ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) ([]T, int, error)
+	Count(ctx context.Context, criteria ...SelectCriteria) (int, error)
+	CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (int, error)
 	Create(ctx context.Context, record T) (T, error)
 	CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
+
+	CreateMany(ctx context.Context, records []T) ([]T, error)
+	CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error)
+
 	GetOrCreate(ctx context.Context, record T) (T, error)
 	GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
 	GetByIdentifier(ctx context.Context, identifier string, criteria ...SelectCriteria) (T, error)
 	GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error)
+
 	Update(ctx context.Context, record T, criteria ...UpdateCriteria) (T, error)
 	UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error)
+	UpdateMany(ctx context.Context, records []T, criteria ...UpdateCriteria) ([]T, error)
+	UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error)
+
 	Upsert(ctx context.Context, record T, criteria ...UpdateCriteria) (T, error)
 	UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error)
+	// UpsertMany(ctx context.Context, records []T) ([]T, error)
+	// UpsertManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error)
+
 	Delete(ctx context.Context, record T) error
 	DeleteTx(ctx context.Context, tx bun.IDB, record T) error
+	DeleteMany(ctx context.Context, criteria ...DeleteCriteria) error
+	DeleteManyTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
+
 	DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) error
 	DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error
 	ForceDelete(ctx context.Context, record T) error
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
+
 	Handlers() ModelHandlers[T]
 }
 
@@ -135,6 +152,30 @@ func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrit
 	return records, total, nil
 }
 
+func (r *repo[T]) Count(ctx context.Context, criteria ...SelectCriteria) (int, error) {
+	return r.CountTx(ctx, r.db, criteria...)
+}
+
+func (r *repo[T]) CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (int, error) {
+	record := r.handlers.NewRecord()
+
+	q := tx.NewSelect().
+		Model(record)
+
+	for _, c := range criteria {
+		q.Apply(c)
+	}
+
+	var total int
+	var err error
+
+	if total, err = q.Count(ctx); err != nil {
+		return total, err
+	}
+
+	return total, nil
+}
+
 func (r *repo[T]) Create(ctx context.Context, record T) (T, error) {
 	return r.CreateTx(ctx, r.db, record)
 }
@@ -145,8 +186,29 @@ func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
 		newID := uuid.New()
 		r.handlers.SetID(record, newID)
 	}
+	// TODO: what would be the proper way to getting the returned records from the insert?
 	_, err := tx.NewInsert().Model(record).Returning("*").Exec(ctx)
 	return record, err
+}
+
+func (r *repo[T]) CreateMany(ctx context.Context, records []T) ([]T, error) {
+	return r.CreateManyTx(ctx, r.db, records)
+}
+
+func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error) {
+	for _, record := range records {
+		id := r.handlers.GetID(record)
+		if id == uuid.Nil {
+			newID := uuid.New()
+			r.handlers.SetID(record, newID)
+		}
+	}
+	// TODO: what would be the proper way to getting the returned records from the insert?
+	_, err := tx.NewInsert().Model(&records).Returning("*").Exec(ctx)
+	if err != nil {
+		return records, fmt.Errorf("create many error: %w", err)
+	}
+	return records, nil
 }
 
 func (r *repo[T]) GetOrCreate(ctx context.Context, record T) (T, error) {
@@ -215,6 +277,30 @@ func (r *repo[T]) UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 	return record, nil
 }
 
+func (r *repo[T]) UpdateMany(ctx context.Context, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	return r.UpdateManyTx(ctx, r.db, records, criteria...)
+}
+
+func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	q := tx.NewUpdate().Model(&records).Bulk()
+	for _, c := range criteria {
+		q.Apply(c)
+	}
+
+	_, err := q.
+		OmitZero().
+		WherePK().
+		Returning("*").
+		Exec(ctx)
+
+	if err != nil {
+		var zero []T
+		return zero, err
+	}
+
+	return records, nil
+}
+
 func (r *repo[T]) Upsert(ctx context.Context, record T, criteria ...UpdateCriteria) (T, error) {
 	return r.UpsertTx(ctx, r.db, record, criteria...)
 }
@@ -241,6 +327,14 @@ func (r *repo[T]) DeleteTx(ctx context.Context, tx bun.IDB, record T) error {
 	q := tx.NewDelete().Model(record).WherePK()
 	_, err := q.Exec(ctx)
 	return err
+}
+
+func (r *repo[T]) DeleteMany(ctx context.Context, criteria ...DeleteCriteria) error {
+	return r.DeleteManyTx(ctx, r.db, criteria...)
+}
+
+func (r *repo[T]) DeleteManyTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error {
+	return r.DeleteWhereTx(ctx, r.db, criteria...)
 }
 
 func (r *repo[T]) DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) error {

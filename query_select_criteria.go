@@ -101,6 +101,13 @@ func OrderBy(expression ...string) SelectCriteria {
 	}
 }
 
+// SelectIsNull IS NULL
+func SelectIsNull(column string) SelectCriteria {
+	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NULL", quote(column)))
+	}
+}
+
 // SelectOrIsNull OR IS NULL
 func SelectOrIsNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
@@ -110,6 +117,13 @@ func SelectOrIsNull(column string) SelectCriteria {
 
 // SelectNotNull adds IS NOT NULL
 func SelectNotNull(column string) SelectCriteria {
+	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NOT NULL", quote(column)))
+	}
+}
+
+// SelectNotNull adds IS NOT NULL
+func SelectOrNotNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NOT NULL", quote(column)))
 	}

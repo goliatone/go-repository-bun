@@ -196,6 +196,10 @@ func (r *repo[T]) CreateMany(ctx context.Context, records []T) ([]T, error) {
 }
 
 func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error) {
+	if len(records) == 0 {
+		return nil, nil // Return early if no records to create
+	}
+
 	for _, record := range records {
 		id := r.handlers.GetID(record)
 		if id == uuid.Nil {
@@ -282,6 +286,10 @@ func (r *repo[T]) UpdateMany(ctx context.Context, records []T, criteria ...Updat
 }
 
 func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	if len(records) == 0 {
+		return nil, nil // Return early if no records to update
+	}
+
 	q := tx.NewUpdate().Model(&records).Bulk()
 	for _, c := range criteria {
 		q.Apply(c)

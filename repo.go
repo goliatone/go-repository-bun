@@ -29,11 +29,11 @@ type Repository[T any] interface {
 	ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) ([]T, int, error)
 	Count(ctx context.Context, criteria ...SelectCriteria) (int, error)
 	CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (int, error)
-	Create(ctx context.Context, record T) (T, error)
-	CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
 
-	CreateMany(ctx context.Context, records []T) ([]T, error)
-	CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error)
+	Create(ctx context.Context, record T, criteria ...InsertCriteria) (T, error)
+	CreateTx(ctx context.Context, tx bun.IDB, record T, criteria ...InsertCriteria) (T, error)
+	CreateMany(ctx context.Context, records []T, criteria ...InsertCriteria) ([]T, error)
+	CreateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...InsertCriteria) ([]T, error)
 
 	GetOrCreate(ctx context.Context, record T) (T, error)
 	GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error)
@@ -49,6 +49,8 @@ type Repository[T any] interface {
 	UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error)
 	UpsertMany(ctx context.Context, records []T, criteria ...UpdateCriteria) ([]T, error)
 	UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error)
+	// UpsertMany(ctx context.Context, records []T, conflictColumns []string, criteria ...InsertCriteria) ([]T, error)
+	// UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, conflictColumns []string, criteria ...InsertCriteria) ([]T, error)
 
 	Delete(ctx context.Context, record T) error
 	DeleteTx(ctx context.Context, tx bun.IDB, record T) error
@@ -64,8 +66,9 @@ type Repository[T any] interface {
 }
 
 type repo[T any] struct {
-	db       bun.IDB
+	db       *bun.DB
 	handlers ModelHandlers[T]
+	fields   []ModelField
 }
 
 type ModelHandlers[T any] struct {
@@ -75,11 +78,19 @@ type ModelHandlers[T any] struct {
 	GetIdentifier func() string
 }
 
-func NewRepository[T any](db bun.IDB, handlers ModelHandlers[T]) Repository[T] {
+func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	return &repo[T]{
 		db:       db,
 		handlers: handlers,
 	}
+}
+
+func (r *repo[T]) GetModelFields() []ModelField {
+	if len(r.fields) == 0 {
+		fields := GetModelFields(r.db, r.handlers.NewRecord())
+		r.fields = fields
+	}
+	return r.fields
 }
 
 func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error) {
@@ -176,28 +187,34 @@ func (r *repo[T]) CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCri
 	return total, nil
 }
 
-func (r *repo[T]) Create(ctx context.Context, record T) (T, error) {
-	return r.CreateTx(ctx, r.db, record)
+func (r *repo[T]) Create(ctx context.Context, record T, criteria ...InsertCriteria) (T, error) {
+	return r.CreateTx(ctx, r.db, record, criteria...)
 }
 
-func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {
+func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T, criteria ...InsertCriteria) (T, error) {
 	id := r.handlers.GetID(record)
 	if id == uuid.Nil {
 		newID := uuid.New()
 		r.handlers.SetID(record, newID)
 	}
+	q := tx.NewInsert().Model(record)
+
+	for _, c := range criteria {
+		q.Apply(c)
+	}
+
 	// TODO: what would be the proper way to getting the returned records from the insert?
-	_, err := tx.NewInsert().Model(record).Returning("*").Exec(ctx)
+	_, err := q.Returning("*").Exec(ctx)
 	return record, err
 }
 
-func (r *repo[T]) CreateMany(ctx context.Context, records []T) ([]T, error) {
-	return r.CreateManyTx(ctx, r.db, records)
+func (r *repo[T]) CreateMany(ctx context.Context, records []T, criteria ...InsertCriteria) ([]T, error) {
+	return r.CreateManyTx(ctx, r.db, records, criteria...)
 }
 
-func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error) {
+func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...InsertCriteria) ([]T, error) {
 	if len(records) == 0 {
-		return nil, nil // Return early if no records to create
+		return nil, nil
 	}
 
 	for _, record := range records {
@@ -207,8 +224,14 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T) ([]
 			r.handlers.SetID(record, newID)
 		}
 	}
-	// TODO: what would be the proper way to getting the returned records from the insert?
-	_, err := tx.NewInsert().Model(&records).Returning("*").Exec(ctx)
+
+	q := tx.NewInsert().Model(&records)
+
+	for _, c := range criteria {
+		q.Apply(c)
+	}
+
+	_, err := q.Returning("*").Exec(ctx)
 	if err != nil {
 		return records, fmt.Errorf("create many error: %w", err)
 	}
@@ -289,7 +312,7 @@ func (r *repo[T]) UpdateMany(ctx context.Context, records []T, criteria ...Updat
 
 func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error) {
 	if len(records) == 0 {
-		return nil, nil // Return early if no records to update
+		return nil, nil
 	}
 
 	q := tx.NewUpdate().Model(&records).Bulk()
@@ -360,6 +383,39 @@ func (r *repo[T]) UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 
 	return upsertedRecords, nil
 }
+
+// func (r *repo[T]) UpsertMany(ctx context.Context, records []T, conflictColumns []string, criteria ...InsertCriteria) ([]T, error) {
+// 	return r.UpsertManyTx(ctx, r.db, records, conflictColumns, criteria...)
+// }
+
+// func (r *repo[T]) UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, conflictColumns []string, criteria ...InsertCriteria) ([]T, error) {
+// 	if len(records) == 0 {
+// 		return nil, nil
+// 	}
+
+// 	if len(conflictColumns) == 0 {
+// 		conflictColumns = []string{"id"}
+// 	}
+
+// 	conflictClause := fmt.Sprintf("ON CONFLICT (%s) DO UPDATE", strings.Join(conflictColumns, ", "))
+
+// 	q := tx.NewInsert().Model(&records).On(conflictClause)
+
+// 	// Apply each UpdateCriteria to the query
+// 	for _, c := range criteria {
+// 		q.Apply(c)
+// 	}
+
+// 	// Execute the query with Returning to fetch updated/created records
+// 	_, err := q.Returning("*").Exec(ctx)
+// 	if err != nil {
+// 		var zero []T
+// 		return zero, err
+// 	}
+
+// 	// Return the upserted records
+// 	return records, nil
+// }
 
 func (r *repo[T]) Delete(ctx context.Context, record T) error {
 	return r.DeleteTx(ctx, r.db, record)

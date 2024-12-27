@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -12,6 +13,14 @@ func quote(s string) string {
 		return s
 	}
 	return "\"" + s + "\""
+}
+
+func quoateAll(s ...string) string {
+	o := []string{}
+	for i, e := range s {
+		o[i] = quote(e)
+	}
+	return strings.Join(o, ", ")
 }
 
 // SelectPaginate will paginate through a result set

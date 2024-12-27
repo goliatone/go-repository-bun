@@ -47,8 +47,8 @@ type Repository[T any] interface {
 
 	Upsert(ctx context.Context, record T, criteria ...UpdateCriteria) (T, error)
 	UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error)
-	// UpsertMany(ctx context.Context, records []T) ([]T, error)
-	// UpsertManyTx(ctx context.Context, tx bun.IDB, records []T) ([]T, error)
+	UpsertMany(ctx context.Context, records []T, criteria ...UpdateCriteria) ([]T, error)
+	UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error)
 
 	Delete(ctx context.Context, record T) error
 	DeleteTx(ctx context.Context, tx bun.IDB, record T) error
@@ -225,10 +225,12 @@ func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, e
 	if err == nil {
 		return existing, nil
 	}
+
 	if !IsRecordNotFound(err) {
 		var zero T
 		return zero, err
 	}
+
 	return r.CreateTx(ctx, tx, record)
 }
 
@@ -325,6 +327,38 @@ func (r *repo[T]) UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria .
 		return zero, err
 	}
 	return r.CreateTx(ctx, tx, record)
+}
+
+func (r *repo[T]) UpsertMany(ctx context.Context, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	return r.UpsertManyTx(ctx, r.db, records, criteria...)
+}
+
+func (r *repo[T]) UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	var upsertedRecords []T
+
+	for _, record := range records {
+		id := r.handlers.GetID(record)
+		existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
+
+		if err == nil {
+			r.handlers.SetID(record, r.handlers.GetID(existing))
+			updatedRecord, updateErr := r.UpdateTx(ctx, tx, record, criteria...)
+			if updateErr != nil {
+				return nil, updateErr
+			}
+			upsertedRecords = append(upsertedRecords, updatedRecord)
+		} else if IsRecordNotFound(err) {
+			createdRecord, createErr := r.CreateTx(ctx, tx, record)
+			if createErr != nil {
+				return nil, createErr
+			}
+			upsertedRecords = append(upsertedRecords, createdRecord)
+		} else {
+			return nil, err
+		}
+	}
+
+	return upsertedRecords, nil
 }
 
 func (r *repo[T]) Delete(ctx context.Context, record T) error {

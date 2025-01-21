@@ -244,6 +244,7 @@ func (r *repo[T]) GetOrCreate(ctx context.Context, record T) (T, error) {
 
 func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {
 	id := r.handlers.GetID(record)
+	// GetField(field)
 	existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
 	if err == nil {
 		return existing, nil

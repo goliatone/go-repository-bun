@@ -2,26 +2,10 @@ package repository
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
 )
-
-func quote(s string) string {
-	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-		return s
-	}
-	return "\"" + s + "\""
-}
-
-func quoateAll(s ...string) string {
-	o := []string{}
-	for i, e := range s {
-		o[i] = quote(e)
-	}
-	return strings.Join(o, ", ")
-}
 
 // SelectPaginate will paginate through a result set
 func SelectPaginate(limit, offset int) SelectCriteria {
@@ -73,7 +57,7 @@ func ExcludeColumns(columns ...string) SelectCriteria {
 // id = 23 or id <= 23
 func SelectBy(column, operator, value string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", quote(column), operator), value)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
 	}
 }
 
@@ -81,7 +65,7 @@ func SelectBy(column, operator, value string) SelectCriteria {
 func SelectByTimetz(column, operator string, value time.Time) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", quote(column), operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
 	}
 }
 
@@ -92,14 +76,14 @@ func SelectMaybeByTimetz(column, operator string, value *time.Time) SelectCriter
 			return q
 		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", quote(column), operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
 	}
 }
 
 // SelectOrBy OR selector
 func SelectOrBy(column, operator, value string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", quote(column), operator), value)
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
 	}
 }
 
@@ -113,28 +97,28 @@ func OrderBy(expression ...string) SelectCriteria {
 // SelectIsNull IS NULL
 func SelectIsNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s IS NULL", quote(column)))
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NULL", column))
 	}
 }
 
 // SelectOrIsNull OR IS NULL
 func SelectOrIsNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", quote(column)))
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", column))
 	}
 }
 
 // SelectNotNull adds IS NOT NULL
 func SelectNotNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s IS NOT NULL", quote(column)))
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NOT NULL", column))
 	}
 }
 
 // SelectNotNull adds IS NOT NULL
 func SelectOrNotNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NOT NULL", quote(column)))
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NOT NULL", column))
 	}
 }
 
@@ -160,20 +144,20 @@ func SelectDeletedAlso() SelectCriteria {
 // SelectOrderDesc sort by column
 func SelectOrderDesc(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Order(fmt.Sprintf("%s %s", quote(column), "DESC"))
+		return q.Order(fmt.Sprintf("%s %s", column, "DESC"))
 	}
 }
 
 // SelectOrderAsc sort by column
 func SelectOrderAsc(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Order(fmt.Sprintf("%s %s", quote(column), "ASC"))
+		return q.Order(fmt.Sprintf("%s %s", column, "ASC"))
 	}
 }
 
 // SelectColumnIn will make an array select
 func SelectColumnIn(column string, values ...any) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("%s IN ?", quote(column)), bun.In(values))
+		return q.Where(fmt.Sprintf("%s IN ?", column), bun.In(values))
 	}
 }

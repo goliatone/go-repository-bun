@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/uptrace/bun"
 )
@@ -21,6 +22,6 @@ func InsertOnConflictIgnore() InsertCriteria {
 
 func InsertOnConflictUpdate(cols ...string) InsertCriteria {
 	return func(iq *bun.InsertQuery) *bun.InsertQuery {
-		return iq.On(fmt.Sprintf("CONFLICT (%s) DO UPDATE", quoateAll(cols...)))
+		return iq.On(fmt.Sprintf("CONFLICT (%s) DO UPDATE", strings.Join(cols, ",")))
 	}
 }

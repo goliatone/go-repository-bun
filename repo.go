@@ -21,6 +21,7 @@ type InsertCriteria func(*bun.InsertQuery) *bun.InsertQuery
 
 type Repository[T any] interface {
 	Raw(ctx context.Context, sql string, args ...any) ([]T, error)
+	RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]T, error)
 	Get(ctx context.Context, criteria ...SelectCriteria) (T, error)
 	GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (T, error)
 	GetByID(ctx context.Context, id string, criteria ...SelectCriteria) (T, error)
@@ -94,9 +95,13 @@ func (r *repo[T]) GetModelFields() []ModelField {
 }
 
 func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error) {
+	return r.RawTx(ctx, r.db, sql, args...)
+}
+
+func (r *repo[T]) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]T, error) {
 	records := []T{}
 
-	if err := r.db.NewRaw(sql, args...).Scan(ctx, &records); err != nil {
+	if err := tx.NewRaw(sql, args...).Scan(ctx, &records); err != nil {
 		return nil, err
 	}
 

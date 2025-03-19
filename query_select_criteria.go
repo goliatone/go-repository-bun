@@ -14,6 +14,12 @@ func SelectPaginate(limit, offset int) SelectCriteria {
 	}
 }
 
+func SelectSubquery(subq *bun.SelectQuery) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.TableExpr("(?) AS book", subq)
+	}
+}
+
 // SelectRelation will add a LEFT JOIN relation
 func SelectRelation(model string, criteria ...SelectCriteria) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
@@ -155,9 +161,40 @@ func SelectOrderAsc(column string) SelectCriteria {
 	}
 }
 
-// SelectColumnIn will make an array select
-func SelectColumnIn(column string, values ...any) SelectCriteria {
+// SelectColumnIn will make an array select.
+// - values: It should be a slice i.e. of IDs
+func SelectColumnIn[T any](column string, slice []T) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("%s IN ?", column), bun.In(values))
+		// fmt.Sprintf("?TableAlias.%s
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.In(slice))
+	}
+}
+
+// SelectColumnNotIn will make an array select
+// - values: It should be a slice i.e. of IDs
+func SelectColumnNotIn[T any](column string, slice []T) SelectCriteria {
+	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.In(slice))
+	}
+}
+
+// SelectColumnInSubq will make an array select
+func SelectColumnInSubq(column string, query string, args ...any) SelectCriteria {
+	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.SafeQuery(query, args...))
+	}
+}
+
+// SelectColumnNotInSubq will make an array select
+// Note that when using `NOT IN` you should ensure that none of the values are NULL:
+//
+//	   AND email NOT IN (
+//		  	SELECT email
+//		  	FROM users
+//				WHERE email is NOT NULL
+//	  )
+func SelectColumnNotInSubq(column string, query string, args ...any) SelectCriteria {
+	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.SafeQuery(query, args...))
 	}
 }

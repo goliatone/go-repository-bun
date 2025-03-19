@@ -38,7 +38,7 @@ type TestCompany struct {
 	UpdatedAt time.Time `bun:"updated_at,notnull"`
 }
 
-func newTestUserRepository(db bun.IDB) Repository[*TestUser] {
+func newTestUserRepository(db *bun.DB) Repository[*TestUser] {
 	handlers := ModelHandlers[*TestUser]{
 		NewRecord: func() *TestUser {
 			return &TestUser{}
@@ -56,7 +56,7 @@ func newTestUserRepository(db bun.IDB) Repository[*TestUser] {
 	return NewRepository[*TestUser](db, handlers)
 }
 
-func newTestCompanyRepository(db bun.IDB) Repository[*TestCompany] {
+func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {
 	handlers := ModelHandlers[*TestCompany]{
 		NewRecord: func() *TestCompany {
 			return &TestCompany{}

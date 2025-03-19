@@ -7,7 +7,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// SetColumn
 // UpdateRawProcessor will execute the passed in function
 func UpdateRawProcessor(fn func(q *bun.UpdateQuery) *bun.UpdateQuery) UpdateCriteria {
 	return fn
@@ -57,11 +56,6 @@ func UpdateOrIsNull(column string) UpdateCriteria {
 // UpdateByID using ID
 func UpdateByID(id string) UpdateCriteria {
 	return UpdateBy("id", "=", id)
-}
-
-// UpdateByProviderID select using provider ID
-func UpdateByProviderID(id string) UpdateCriteria {
-	return UpdateBy("provider_id", "=", id)
 }
 
 // UpdateDeletedOnly will include deleted only

@@ -66,6 +66,10 @@ type Repository[T any] interface {
 	Handlers() ModelHandlers[T]
 }
 
+type Meta[T any] interface {
+	TableName() string
+}
+
 type repo[T any] struct {
 	db       *bun.DB
 	handlers ModelHandlers[T]
@@ -296,7 +300,8 @@ func (r *repo[T]) UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 	for _, c := range criteria {
 		q.Apply(c)
 	}
-
+	// TODO: WherePK will auto generate "ws"."id" = '44a3e9dc-0381-37a6-9652-99ea14057af5'
+	// so we can call it with model having the ID and we don't need criteria
 	res, err := q.OmitZero().WherePK().Returning("*").Exec(ctx)
 
 	if err != nil {
@@ -463,4 +468,9 @@ func (r *repo[T]) ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
 	q := tx.NewDelete().Model(record).WherePK().ForceDelete()
 	_, err := q.Exec(ctx)
 	return err
+}
+
+func (r *repo[T]) TableName() string {
+	var model T
+	return r.db.NewCreateTable().Model(model).GetTableName()
 }

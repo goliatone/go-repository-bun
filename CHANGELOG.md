@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.2.0](https://github.com/goliatone/go-repository-bun/compare/v0.1.0...v0.2.0) - (2025-04-09)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.0 ([85f79f4](https://github.com/goliatone/go-repository-bun/commit/85f79f41c8015a3067ef6252b7984e64231108ab))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New update criteria ([6efc7f5](https://github.com/goliatone/go-repository-bun/commit/6efc7f52c509998e70b7128b8e6a4cf5a6767329))  - (goliatone)
+- New select criteria ([39685f0](https://github.com/goliatone/go-repository-bun/commit/39685f0d747cbd3193eab5a4d282ac99c1439d2c))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Meta implementation ([21fadc6](https://github.com/goliatone/go-repository-bun/commit/21fadc6857fbfb44a4a5ca62397f875140433fe7))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.0 ([fdc13df](https://github.com/goliatone/go-repository-bun/commit/fdc13df29fbb745d30676b99385d4fc96bbbe416))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#2](https://github.com/goliatone/go-repository-bun/pull/2): new criteria ([71840a8](https://github.com/goliatone/go-repository-bun/commit/71840a82af7ec38bc72fcdb7146452364430693b))  - (goliatone)
+
 # [0.1.0](https://github.com/goliatone/go-repository-bun/compare/v0.0.5...v0.1.0) - (2025-03-19)
 
 ## <!-- 1 -->🐛 Bug Fixes

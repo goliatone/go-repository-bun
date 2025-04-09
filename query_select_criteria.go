@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -17,6 +18,12 @@ func SelectPaginate(limit, offset int) SelectCriteria {
 func SelectSubquery(subq *bun.SelectQuery) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
 		return sq.TableExpr("(?) AS book", subq)
+	}
+}
+
+func SelectColumnCompare(col1, operator, col2 string) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Where(fmt.Sprintf("?TableAlias.%s %s ?TableAlias.%s", col1, operator, col2))
 	}
 }
 
@@ -196,5 +203,52 @@ func SelectColumnInSubq(column string, query string, args ...any) SelectCriteria
 func SelectColumnNotInSubq(column string, query string, args ...any) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.SafeQuery(query, args...))
+	}
+}
+
+// SelectDistinct will add DISTINCT or DISTINCT ON cols
+func SelectDistinct(columns ...string) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		if len(columns) == 0 {
+			return sq.Distinct()
+		}
+		return sq.DistinctOn(strings.Join(columns, ", "))
+	}
+}
+
+func SelectGroupBy(columns ...string) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Group(columns...)
+	}
+}
+
+func SelectHaving(expr string, args ...any) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Having(expr, args...)
+	}
+}
+
+func SelectBetween(column string, start, end any) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Where(fmt.Sprintf("?TableAlias.%s BETWEEN ? AND ?", column), start, end)
+	}
+}
+
+func SelectTimeRange(column string, start, end time.Time) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Where(fmt.Sprintf("?TableAlias.%s >= ? AND ?TableAlias.%s <= ?", column, column), start, end)
+	}
+}
+
+func SelectILike(column, pattern string) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		return sq.Where(fmt.Sprintf("?TableAlias.%s ILIKE %s", column, pattern))
+	}
+}
+
+func SelectJSONContains(column string, jsonVal any) SelectCriteria {
+	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		// TODO: This is Postgres specific, how to generalize?
+		return sq.Where(fmt.Sprintf("?TableAlias.%s @> ?", column), jsonVal)
 	}
 }

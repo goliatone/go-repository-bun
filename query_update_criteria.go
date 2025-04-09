@@ -12,6 +12,12 @@ func UpdateRawProcessor(fn func(q *bun.UpdateQuery) *bun.UpdateQuery) UpdateCrit
 	return fn
 }
 
+func UpdateByPK(cols ...string) UpdateCriteria {
+	return func(uq *bun.UpdateQuery) *bun.UpdateQuery {
+		return uq.WherePK(cols...)
+	}
+}
+
 // UpdateBy will select by the given column where: column operator value
 // id = 23 or id <= 23
 func UpdateBy(column, operator, value string) UpdateCriteria {

@@ -2,40 +2,36 @@ package repository
 
 import (
 	"database/sql"
-	"errors"
 
+	"fmt"
+
+	"github.com/goliatone/go-errors"
 	"github.com/google/uuid"
 )
 
-// ErrRecordNotFound means the query returned no results
-var ErrRecordNotFound = errors.New("record not found")
-
-// ErrSQLExpectedCountViolation when returned rows do not match expectation
-var ErrSQLExpectedCountViolation = errors.New("SQL expected count violation")
-
-// SQLExpectedCount ensure we have the expected number of results
 func SQLExpectedCount(res sql.Result, expected int64) error {
 	total, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return errors.Wrap(err, CategoryDatabase, "Failed to get rows affected count")
 	}
 
 	if total != expected {
-		return ErrSQLExpectedCountViolation
+		return errors.NewNonRetryable(
+			fmt.Sprintf("Expected %d affected rows, got %d", expected, total),
+			CategoryDatabaseExpectedCount,
+		).WithCode(errors.CodeInternal).
+			WithTextCode("SQL_EXPECTED_COUNT_VIOLATION").
+			WithMetadata(map[string]any{
+				"expected": expected,
+				"actual":   total,
+			})
 	}
-
 	return nil
 }
 
-// IsSQLExpectedCountViolation checks for expected violation error
+// And add a category checker:
 func IsSQLExpectedCountViolation(err error) bool {
-	return errors.Is(err, ErrSQLExpectedCountViolation)
-}
-
-func IsRecordNotFound(err error) bool {
-	return errors.Is(err, ErrRecordNotFound) ||
-		errors.Is(err, sql.ErrNoRows) ||
-		errors.Is(err, ErrSQLExpectedCountViolation)
+	return errors.IsCategory(err, CategoryDatabaseExpectedCount)
 }
 
 // IsNoRowError checks if the error is caused by no row found in the database.

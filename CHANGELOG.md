@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.3.0](https://github.com/goliatone/go-repository-bun/compare/v0.2.0...v0.3.0) - (2025-06-24)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Changelog filter duplicated message ([58dd64e](https://github.com/goliatone/go-repository-bun/commit/58dd64ee3bc462488e0e6fda5ea6620492402357))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.3.0 ([8ae8a06](https://github.com/goliatone/go-repository-bun/commit/8ae8a0675381a45bd0110a70e3deed99ec417104))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Integrate errors ([c1cd5a4](https://github.com/goliatone/go-repository-bun/commit/c1cd5a489cd6570f7ac12a65c490471dab79cb78))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.0 ([21b07f7](https://github.com/goliatone/go-repository-bun/commit/21b07f7fbb8f6f047885dc1d01d619206b79001b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([7c5b8a9](https://github.com/goliatone/go-repository-bun/commit/7c5b8a9a5a874ca9cdea05f15f38a9a2ceb8c769))  - (goliatone)
+
 # [0.2.0](https://github.com/goliatone/go-repository-bun/compare/v0.1.0...v0.2.0) - (2025-04-09)
 
 ## <!-- 13 -->📦 Bumps
@@ -28,7 +50,6 @@
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Remove quote all ([ee08e54](https://github.com/goliatone/go-repository-bun/commit/ee08e541c52fda8bc4668f6314730deabf9ec6c7))  - (goliatone)
-- Remove quote all ([ff2feec](https://github.com/goliatone/go-repository-bun/commit/ff2feec3a8803e21ef85cb0a1dbdcdeb6e52ff54))  - (goliatone)
 - Ensure that we check records length ([a7e4090](https://github.com/goliatone/go-repository-bun/commit/a7e40900cfa80f669a9ea4f1532da7a0beb8ea00))  - (goliatone)
 - Doc example ([440a1cf](https://github.com/goliatone/go-repository-bun/commit/440a1cf98a6fd0313b4af3e2190160ff39ffa456))  - (goliatone)
 - Remove non relevant update criteria ([84a3d28](https://github.com/goliatone/go-repository-bun/commit/84a3d282761c10d7c55f6e4104b15968f11223ea))  - (goliatone)
@@ -54,7 +75,6 @@
 
 - GetField metod to repo ([889c6ef](https://github.com/goliatone/go-repository-bun/commit/889c6efe7caf93281f5cd8e1ae2d8a88c28ef89d))  - (goliatone)
 - Batch methods ([127d3ce](https://github.com/goliatone/go-repository-bun/commit/127d3cec87b31a47ad1bfbad37c1528b05e99b8b))  - (goliatone)
-- Batch methods ([0a2d121](https://github.com/goliatone/go-repository-bun/commit/0a2d121184288b06a264f3ad9cbd67a68cc0b50c))  - (goliatone)
 - Add metadata inspector ([3cac8b6](https://github.com/goliatone/go-repository-bun/commit/3cac8b665bc86a6642d467a481a384fdb10b9b3e))  - (goliatone)
 - Upsert many ([406b3fd](https://github.com/goliatone/go-repository-bun/commit/406b3fd169fbafd7764369bbca18c7e02a7334ff))  - (goliatone)
 
@@ -89,7 +109,6 @@
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Expose SetID method ([25aad88](https://github.com/goliatone/go-repository-bun/commit/25aad88f8d9bddbb5962064c85fc198a56df10d3))  - (goliatone)
-- Expose SetID method ([c8a4382](https://github.com/goliatone/go-repository-bun/commit/c8a43820980578071c37a9c5fd835a241096a2ff))  - (goliatone)
 
 ## <!-- 13 -->📦 Bumps
 

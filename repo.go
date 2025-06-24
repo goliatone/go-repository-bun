@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/goliatone/go-errors"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
 type SelectCriteria func(*bun.SelectQuery) *bun.SelectQuery
@@ -74,6 +76,7 @@ type repo[T any] struct {
 	db       *bun.DB
 	handlers ModelHandlers[T]
 	fields   []ModelField
+	driver   string
 }
 
 type ModelHandlers[T any] struct {
@@ -87,7 +90,20 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	return &repo[T]{
 		db:       db,
 		handlers: handlers,
+		driver:   detectDriver(db),
 	}
+}
+
+func (r *repo[T]) mapError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.IsWrapped(err) {
+		return err
+	}
+
+	return MapDatabaseError(err, r.driver)
 }
 
 func (r *repo[T]) GetModelFields() []ModelField {
@@ -106,7 +122,7 @@ func (r *repo[T]) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any
 	records := []T{}
 
 	if err := tx.NewRaw(sql, args...).Scan(ctx, &records); err != nil {
-		return nil, err
+		return nil, r.mapError(err)
 	}
 
 	return records, nil
@@ -130,7 +146,7 @@ func (r *repo[T]) GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrite
 
 	if err := q.Limit(1).Scan(ctx); err != nil {
 		var zero T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 	return record, nil
 }
@@ -166,7 +182,7 @@ func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrit
 	var err error
 
 	if total, err = q.ScanAndCount(ctx); err != nil {
-		return nil, total, err
+		return nil, total, r.mapError(err)
 	}
 
 	return records, total, nil
@@ -190,7 +206,7 @@ func (r *repo[T]) CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCri
 	var err error
 
 	if total, err = q.Count(ctx); err != nil {
-		return total, err
+		return total, r.mapError(err)
 	}
 
 	return total, nil
@@ -242,7 +258,7 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 
 	_, err := q.Returning("*").Exec(ctx)
 	if err != nil {
-		return records, fmt.Errorf("create many error: %w", err)
+		return records, r.mapError(fmt.Errorf("create many error: %w", err))
 	}
 	return records, nil
 }
@@ -261,7 +277,7 @@ func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, e
 
 	if !IsRecordNotFound(err) {
 		var zero T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 
 	return r.CreateTx(ctx, tx, record)
@@ -286,7 +302,7 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 	q = q.Where(fmt.Sprintf("?TableAlias.%s = ?", column), identifier).Limit(1)
 	if err := q.Scan(ctx); err != nil {
 		var zero T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 	return record, nil
 }
@@ -339,7 +355,7 @@ func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 
 	if err != nil {
 		var zero []T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 
 	return records, nil
@@ -358,7 +374,7 @@ func (r *repo[T]) UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria .
 	}
 	if !IsRecordNotFound(err) {
 		var zero T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 	return r.CreateTx(ctx, tx, record)
 }
@@ -378,17 +394,17 @@ func (r *repo[T]) UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 			r.handlers.SetID(record, r.handlers.GetID(existing))
 			updatedRecord, updateErr := r.UpdateTx(ctx, tx, record, criteria...)
 			if updateErr != nil {
-				return nil, updateErr
+				return nil, r.mapError(updateErr)
 			}
 			upsertedRecords = append(upsertedRecords, updatedRecord)
 		} else if IsRecordNotFound(err) {
 			createdRecord, createErr := r.CreateTx(ctx, tx, record)
 			if createErr != nil {
-				return nil, createErr
+				return nil, r.mapError(createErr)
 			}
 			upsertedRecords = append(upsertedRecords, createdRecord)
 		} else {
-			return nil, err
+			return nil, r.mapError(err)
 		}
 	}
 
@@ -473,4 +489,19 @@ func (r *repo[T]) ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
 func (r *repo[T]) TableName() string {
 	var model T
 	return r.db.NewCreateTable().Model(model).GetTableName()
+}
+
+func detectDriver(db *bun.DB) string {
+	switch db.Dialect().Name() {
+	case dialect.PG:
+		return "postgres"
+	case dialect.SQLite:
+		return "sqlite"
+	case dialect.MSSQL:
+		return "mssql"
+	case dialect.MySQL:
+		return "mysql"
+	default:
+		return "unknown"
+	}
 }

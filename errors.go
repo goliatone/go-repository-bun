@@ -2,7 +2,6 @@ package repository
 
 import (
 	"database/sql"
-	"net/http"
 	"regexp"
 	"strings"
 
@@ -199,49 +198,90 @@ func MapSQLiteErrors(err error) error {
 func MapMSSQLErrors(err error) error {
 	msg := err.Error()
 
-	// TODO: more comprehensive patterns :/
-	patterns := map[*regexp.Regexp]error{
-		regexp.MustCompile(`(?i)duplicate key|unique.*constraint`): errors.NewNonRetryable("Duplicate key violation", CategoryDatabaseDuplicate).
-			WithCode(http.StatusConflict).
-			WithTextCode("DUPLICATE_KEY"),
-
-		regexp.MustCompile(`(?i)foreign key.*constraint`): errors.NewNonRetryable("Foreign key constraint violation", CategoryDatabaseConstraint).
-			WithCode(http.StatusBadRequest).
-			WithTextCode("FOREIGN_KEY_VIOLATION"),
-
-		regexp.MustCompile(`(?i)deadlock|was deadlocked`): errors.NewRetryableOperation("Deadlock detected", 500).
-			WithCode(http.StatusConflict).
-			WithTextCode("DEADLOCK_DETECTED"),
-
-		regexp.MustCompile(`(?i)timeout|query timeout`): errors.NewRetryableOperation("Query timeout", 2000).
-			WithCode(http.StatusRequestTimeout).
-			WithTextCode("QUERY_TIMEOUT"),
-
-		regexp.MustCompile(`(?i)permission denied|access denied`): errors.NewNonRetryable("Permission denied", CategoryDatabasePermission).
-			WithCode(http.StatusForbidden).
-			WithTextCode("PERMISSION_DENIED"),
+	patterns := []struct {
+		pattern     *regexp.Regexp
+		createError func() error
+	}{
+		{
+			pattern: regexp.MustCompile(`(?i)duplicate key|unique.*constraint`),
+			createError: func() error {
+				return errors.NewNonRetryable("Duplicate key violation", CategoryDatabaseDuplicate).
+					WithCode(errors.CodeConflict).
+					WithTextCode("DUPLICATE_KEY")
+			},
+		},
+		{
+			pattern: regexp.MustCompile(`(?i)foreign key.*constraint`),
+			createError: func() error {
+				return errors.NewNonRetryable("Foreign key constraint violation", CategoryDatabaseConstraint).
+					WithCode(errors.CodeBadRequest).
+					WithTextCode("FOREIGN_KEY_VIOLATION")
+			},
+		},
+		{
+			pattern: regexp.MustCompile(`(?i)deadlock|was deadlocked`),
+			createError: func() error {
+				return errors.NewRetryableOperation("Deadlock detected", 500).
+					WithCode(errors.CodeConflict).
+					WithTextCode("DEADLOCK_DETECTED")
+			},
+		},
+		{
+			pattern: regexp.MustCompile(`(?i)timeout|query timeout`),
+			createError: func() error {
+				return errors.NewRetryableOperation("Query timeout", 2000).
+					WithCode(errors.CodeRequestTimeout).
+					WithTextCode("QUERY_TIMEOUT")
+			},
+		},
+		{
+			pattern: regexp.MustCompile(`(?i)permission denied|access denied`),
+			createError: func() error {
+				return errors.NewNonRetryable("Permission denied", CategoryDatabasePermission).
+					WithCode(errors.CodeForbidden).
+					WithTextCode("PERMISSION_DENIED")
+			},
+		},
 	}
 
-	for pattern, errorTemplate := range patterns {
-		if pattern.MatchString(msg) {
-			return errorTemplate
+	for _, p := range patterns {
+		if p.pattern.MatchString(msg) {
+			return p.createError()
 		}
 	}
 
 	return nil
 }
 
+// IsCategoryCompat checks if an error matches a category
+func IsCategoryCompat(err error, category errors.Category) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.IsCategory(err, category) {
+		return true
+	}
+
+	var retryableErr *errors.RetryableError
+	if errors.As(err, &retryableErr) && retryableErr.BaseError != nil {
+		return retryableErr.BaseError.Category == category
+	}
+
+	return false
+}
+
 func IsDuplicatedKey(err error) bool {
-	return errors.IsCategory(err, CategoryDatabaseDuplicate)
+	return IsCategoryCompat(err, CategoryDatabaseDuplicate)
 }
 
 func IsConstraintViolation(err error) bool {
-	return errors.IsCategory(err, CategoryDatabaseConstraint) ||
-		errors.IsCategory(err, CategoryDatabaseDuplicate)
+	return IsCategoryCompat(err, CategoryDatabaseConstraint) ||
+		IsCategoryCompat(err, CategoryDatabaseDuplicate)
 }
 
 func IsConnectionError(err error) bool {
-	return errors.IsCategory(err, CategoryDatabaseConnection)
+	return IsCategoryCompat(err, CategoryDatabaseConnection)
 }
 
 func IsRetryableDatabase(err error) bool {

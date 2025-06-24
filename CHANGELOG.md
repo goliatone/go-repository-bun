@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.4.0](https://github.com/goliatone/go-repository-bun/compare/v0.3.0...v0.4.0) - (2025-06-24)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Errors check on categories ([7dac11c](https://github.com/goliatone/go-repository-bun/commit/7dac11cd4ed3fa0cfa0e26c0f7e2157e58c33fee))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.4.0 ([2e417bf](https://github.com/goliatone/go-repository-bun/commit/2e417bfa16843b5802c9ef1210fbabcfcbf96e40))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Error tests ([0fd1b60](https://github.com/goliatone/go-repository-bun/commit/0fd1b60936d88aecf2a5257a560a61ead3fc93b6))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Move category check to errors ([63cb1b7](https://github.com/goliatone/go-repository-bun/commit/63cb1b7520a663b249316f1d83b84f5997ff682f))  - (goliatone)
+- Move check function to utils ([7d84d3b](https://github.com/goliatone/go-repository-bun/commit/7d84d3be0fe00c3a77e4ba14f99cce5151112c8f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.3.0 ([f7803ee](https://github.com/goliatone/go-repository-bun/commit/f7803eefce920505947234bd518f0fde9f412039))  - (goliatone)
+
 # [0.3.0](https://github.com/goliatone/go-repository-bun/compare/v0.2.0...v0.3.0) - (2025-06-24)
 
 ## <!-- 1 -->🐛 Bug Fixes

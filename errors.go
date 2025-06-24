@@ -253,35 +253,17 @@ func MapMSSQLErrors(err error) error {
 	return nil
 }
 
-// IsCategoryCompat checks if an error matches a category
-func IsCategoryCompat(err error, category errors.Category) bool {
-	if err == nil {
-		return false
-	}
-
-	if errors.IsCategory(err, category) {
-		return true
-	}
-
-	var retryableErr *errors.RetryableError
-	if errors.As(err, &retryableErr) && retryableErr.BaseError != nil {
-		return retryableErr.BaseError.Category == category
-	}
-
-	return false
-}
-
 func IsDuplicatedKey(err error) bool {
-	return IsCategoryCompat(err, CategoryDatabaseDuplicate)
+	return errors.IsCategory(err, CategoryDatabaseDuplicate)
 }
 
 func IsConstraintViolation(err error) bool {
-	return IsCategoryCompat(err, CategoryDatabaseConstraint) ||
-		IsCategoryCompat(err, CategoryDatabaseDuplicate)
+	return errors.IsCategory(err, CategoryDatabaseConstraint) ||
+		errors.IsCategory(err, CategoryDatabaseDuplicate)
 }
 
 func IsConnectionError(err error) bool {
-	return IsCategoryCompat(err, CategoryDatabaseConnection)
+	return errors.IsCategory(err, CategoryDatabaseConnection)
 }
 
 func IsRetryableDatabase(err error) bool {

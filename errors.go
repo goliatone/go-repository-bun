@@ -231,29 +231,6 @@ func MapMSSQLErrors(err error) error {
 	return nil
 }
 
-func IsRecordNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	if errors.Is(err, sql.ErrNoRows) {
-		return true
-	}
-
-	if errors.IsCategory(err, CategoryDatabaseNotFound) {
-		return true
-	}
-
-	var retryableErr *errors.RetryableError
-	if errors.As(err, &retryableErr) {
-		if retryableErr.BaseError != nil {
-			return errors.IsCategory(retryableErr.BaseError, CategoryDatabaseNotFound)
-		}
-	}
-
-	return false
-}
-
 func IsDuplicatedKey(err error) bool {
 	return errors.IsCategory(err, CategoryDatabaseDuplicate)
 }

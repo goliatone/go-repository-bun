@@ -34,9 +34,27 @@ func IsSQLExpectedCountViolation(err error) bool {
 	return errors.IsCategory(err, CategoryDatabaseExpectedCount)
 }
 
-// IsNoRowError checks if the error is caused by no row found in the database.
-func IsNoRowError(err error) bool {
-	return errors.Is(err, sql.ErrNoRows)
+func IsRecordNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+
+	if errors.IsCategory(err, CategoryDatabaseNotFound) {
+		return true
+	}
+
+	var retryableErr *errors.RetryableError
+	if errors.As(err, &retryableErr) {
+		if retryableErr.BaseError != nil {
+			return errors.IsCategory(retryableErr.BaseError, CategoryDatabaseNotFound)
+		}
+	}
+
+	return false
 }
 
 func isUUID(identifier string) bool {

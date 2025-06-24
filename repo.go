@@ -90,7 +90,7 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	return &repo[T]{
 		db:       db,
 		handlers: handlers,
-		driver:   detectDriver(db),
+		driver:   DetectDriver(db),
 	}
 }
 
@@ -491,7 +491,7 @@ func (r *repo[T]) TableName() string {
 	return r.db.NewCreateTable().Model(model).GetTableName()
 }
 
-func detectDriver(db *bun.DB) string {
+func DetectDriver(db *bun.DB) string {
 	switch db.Dialect().Name() {
 	case dialect.PG:
 		return "postgres"

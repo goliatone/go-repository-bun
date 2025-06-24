@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.4.3](https://github.com/goliatone/go-repository-bun/compare/v0.4.2...v0.4.3) - (2025-06-24)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Make DetectDriver available ([581b3d3](https://github.com/goliatone/go-repository-bun/commit/581b3d3a3e738b4819bfd4567e8a3eda3fe064e7))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.4.3 ([e24ce80](https://github.com/goliatone/go-repository-bun/commit/e24ce80ce0551cf6e3a9da2b676f135efd0ec0a8))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.4.2 ([66ccb3f](https://github.com/goliatone/go-repository-bun/commit/66ccb3f82580d95767845cb739490fb0f8fa5cf6))  - (goliatone)
+
 # [0.4.2](https://github.com/goliatone/go-repository-bun/compare/v0.4.1...v0.4.2) - (2025-06-24)
 
 ## <!-- 13 -->📦 Bumps

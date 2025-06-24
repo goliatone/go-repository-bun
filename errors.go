@@ -269,3 +269,9 @@ func IsConnectionError(err error) bool {
 func IsRetryableDatabase(err error) bool {
 	return errors.IsRetryableError(err)
 }
+
+func NewRecordNotFound() *errors.RetryableError {
+	return errors.NewNonRetryable("Record not found", CategoryDatabaseNotFound).
+		WithCode(errors.CodeNotFound).
+		WithTextCode("RECORD_NOT_FOUND")
+}

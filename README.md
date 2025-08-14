@@ -14,6 +14,8 @@ A generic implementation of a data access layer using Go generics and [Bun ORM](
 - `GetOrCreate` and `Upsert` convenience methods
 - Multi-database support (PostgreSQL, SQLite, MSSQL, MySQL)
 - Sophisticated error handling with categorized errors
+- Model metadata extraction and field introspection
+- Transaction management utilities
 - Comprehensive test coverage
 
 ## Installation
@@ -222,6 +224,8 @@ The repository automatically detects and adapts to different database drivers:
 - SQLite
 - MSSQL
 - MySQL
+
+Database driver detection is handled automatically via the `DetectDriver` function.
 
 ## License
 

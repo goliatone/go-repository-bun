@@ -217,6 +217,39 @@ if err != nil {
 }
 ```
 
+## Advanced Features
+
+### Model Metadata
+
+The package provides utilities to extract model metadata and field information:
+
+```go
+// Get model fields with database metadata
+fields := repository.GetModelFields(db, &User{})
+for _, field := range fields {
+    fmt.Printf("Field: %s, PK: %v, Type: %s\n", field.Name, field.IsPK, field.SQLType)
+}
+
+// Generate complete model metadata including JSON tags and validations
+meta := repository.GenerateModelMeta(&User{})
+fmt.Printf("Table: %s\n", meta.TableName)
+for _, field := range meta.Fields {
+    fmt.Printf("Field: %s, Required: %v, Unique: %v\n", 
+        field.Name, field.IsRequired, field.IsUnique)
+}
+```
+
+### Transaction Management
+
+The package includes a `TransactionManager` interface for managing database transactions:
+
+```go
+type TransactionManager interface {
+    RunInTx(ctx context.Context, opts *sql.TxOptions, 
+        f func(ctx context.Context, tx bun.Tx) error) error
+}
+```
+
 ## Database Support
 
 The repository automatically detects and adapts to different database drivers:
@@ -226,6 +259,16 @@ The repository automatically detects and adapts to different database drivers:
 - MySQL
 
 Database driver detection is handled automatically via the `DetectDriver` function.
+
+## Project Structure
+
+- `repo.go` - Main repository implementation
+- `errors.go` - Custom error types and handlers
+- `meta.go` - Model metadata extraction utilities
+- `types.go` - Type definitions and interfaces
+- `utils.go` - Utility functions including `DetectDriver`
+- `query_*_criteria.go` - Query builder criteria functions
+- `examples/` - Example usage and model definitions
 
 ## License
 

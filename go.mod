@@ -3,7 +3,7 @@ module github.com/goliatone/go-repository-bun
 go 1.23.4
 
 require (
-	github.com/goliatone/go-errors v0.7.0
+	github.com/goliatone/go-errors v0.9.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.28

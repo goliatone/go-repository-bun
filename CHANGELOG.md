@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.5.0](https://github.com/goliatone/go-repository-bun/compare/v0.4.3...v0.5.0) - (2025-08-23)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.5.0 ([de20a51](https://github.com/goliatone/go-repository-bun/commit/de20a519e4f63715501059f9ad6d1a1496e9d7ab))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Types for itnerfaces ([47bd8e5](https://github.com/goliatone/go-repository-bun/commit/47bd8e54a5bb873ad5544890086958f48eb71bd4))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.4.3 ([bff3e91](https://github.com/goliatone/go-repository-bun/commit/bff3e91c7c2c655b35b11f35ee2170e43f172692))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([c7e8ebd](https://github.com/goliatone/go-repository-bun/commit/c7e8ebd222eddef0884b5d252d6a9c16c9f10985))  - (goliatone)
+
 # [0.4.3](https://github.com/goliatone/go-repository-bun/compare/v0.4.2...v0.4.3) - (2025-06-24)
 
 ## <!-- 1 -->🐛 Bug Fixes

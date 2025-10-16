@@ -144,7 +144,7 @@ users, total, err := userRepo.List(ctx,
     repository.SelectBy("status", "=", "active"),
     repository.SelectColumns("id", "name", "email"),
     repository.SelectRelation("Profile"),
-    repository.WhereGroup(func(q *bun.SelectQuery) *bun.SelectQuery {
+    repository.SelectRawProcessor(func(q *bun.SelectQuery) *bun.SelectQuery {
         return q.Where("created_at > ?", time.Now().Add(-24*time.Hour)).
                 WhereOr("updated_at > ?", time.Now().Add(-1*time.Hour))
     }),
@@ -158,7 +158,7 @@ count, err := userRepo.Count(ctx,
 // Delete with criteria
 err := userRepo.DeleteWhere(ctx,
     repository.DeleteBy("status", "=", "inactive"),
-    repository.DeleteBefore("created_at", time.Now().Add(-365*24*time.Hour)),
+    repository.DeleteByTimetz("created_at", "<", time.Now().Add(-365*24*time.Hour)),
 )
 ```
 
@@ -207,7 +207,7 @@ if err != nil {
     if repository.IsRecordNotFound(err) {
         // Handle not found
     }
-    if repository.IsDuplicateKeyError(err) {
+    if repository.IsDuplicatedKey(err) {
         // Handle duplicate
     }
     if repository.IsConstraintViolation(err) {
@@ -262,11 +262,11 @@ Database driver detection is handled automatically via the `DetectDriver` functi
 
 ## Project Structure
 
-- `repo.go` - Main repository implementation
+- `repo.go` - Main repository implementation and `DetectDriver` function
 - `errors.go` - Custom error types and handlers
 - `meta.go` - Model metadata extraction utilities
 - `types.go` - Type definitions and interfaces
-- `utils.go` - Utility functions including `DetectDriver`
+- `utils.go` - Utility functions including error helpers
 - `query_*_criteria.go` - Query builder criteria functions
 - `examples/` - Example usage and model definitions
 

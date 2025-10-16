@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.5.3](https://github.com/goliatone/go-repository-bun/compare/v0.5.2...v0.5.3) - (2025-10-16)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Existing records for repo. fix: normalize errors ([17146ed](https://github.com/goliatone/go-repository-bun/commit/17146ed76357eddfeb935587a75465e52675a1c1))  - (goliatone)
+- Handle table suffix ([0891bdb](https://github.com/goliatone/go-repository-bun/commit/0891bdbd5130f4c82d583d39dd8d85464d37a696))  - (goliatone)
+- Normalize wrapped errors ([faa3616](https://github.com/goliatone/go-repository-bun/commit/faa3616229eb2db063f0ddc5b8a83f8235ae4fc6))  - (goliatone)
+- Use mapError. fix: use tx in DeleteManyTx ([4516e67](https://github.com/goliatone/go-repository-bun/commit/4516e67b40ce447e7bb3d04dc6337983e6122264))  - (goliatone)
+- Insert column use safe insert formatting ([2b5b44e](https://github.com/goliatone/go-repository-bun/commit/2b5b44e29e9d48c8fe4d4507fbffa2241058d7fd))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.5.3 ([8739af9](https://github.com/goliatone/go-repository-bun/commit/8739af90100a1d6aefeea9606ba74d1df63e4b6d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.5.2 ([6c34030](https://github.com/goliatone/go-repository-bun/commit/6c34030b9cf8560509c3ad654e084ad7cabe0c44))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([b584ff5](https://github.com/goliatone/go-repository-bun/commit/b584ff53d75f4b0b7550c90b1e1c199217d7a941))  - (goliatone)
+
 # [0.5.2](https://github.com/goliatone/go-repository-bun/compare/v0.5.1...v0.5.2) - (2025-08-23)
 
 ## <!-- 13 -->📦 Bumps

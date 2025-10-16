@@ -10,7 +10,7 @@ import (
 // InsertSetColumn will set the column to be updated
 func InsertSetColumn(col string, val any) InsertCriteria {
 	return func(q *bun.InsertQuery) *bun.InsertQuery {
-		return q.Set(col, "?", val)
+		return q.Set("? = ?", bun.Ident(col), val)
 	}
 }
 

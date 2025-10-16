@@ -242,7 +242,7 @@ func SelectTimeRange(column string, start, end time.Time) SelectCriteria {
 
 func SelectILike(column, pattern string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Where(fmt.Sprintf("?TableAlias.%s ILIKE %s", column, pattern))
+		return sq.Where(fmt.Sprintf("?TableAlias.%s ILIKE ?", column), pattern)
 	}
 }
 

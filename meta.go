@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -20,14 +19,11 @@ type ModelField struct {
 
 // GetModelFields returns a list of fields for the model:
 // fields := GetModelFields(db, &User{})
-func GetModelFields(db *bun.DB, model interface{}) []ModelField {
+func GetModelFields(db *bun.DB, model any) []ModelField {
 	table := db.Table(reflect.TypeOf(model))
 	var fields []ModelField
 
 	for _, field := range table.Fields {
-
-		fmt.Printf("tag: %s %v\n", field.Tag.Name, field.Tag.Options)
-
 		fields = append(fields, ModelField{
 			Name:       field.Name,
 			IsPK:       field.IsPK,
@@ -59,7 +55,7 @@ type FieldMeta struct {
 	IsPK         bool     `json:"is_pk"`
 	Description  string   `json:"description"`
 	DefaultValue string   `json:"default_value"`
-	Validations  []string `json:"validations,ommitempty"`
+	Validations  []string `json:"validations,omitempty"`
 }
 
 // GenerateModelMeta generates metadata from a model using reflection
@@ -86,10 +82,10 @@ func GenerateModelMeta(model any) ModelMeta {
 			bunTag := field.Tag.Get("bun")
 			parts := strings.Split(bunTag, ",")
 			for _, part := range parts {
-				if strings.HasPrefix(part, "table:") {
-
+				if name, ok := strings.CutPrefix(part, ":table"); ok && name != "" {
+					meta.TableName = name
+					break
 				}
-				meta.TableName = strings.TrimPrefix(part, "table:")
 			}
 			continue
 		}

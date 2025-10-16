@@ -71,10 +71,16 @@ handlers := repository.ModelHandlers[*User]{
     GetIdentifier: func() string {
         return "email" // Unique identifier field
     },
+    GetIdentifierValue: func(record *User) string {
+        if record == nil {
+            return ""
+        }
+        return record.Email
+    },
 }
 
 // Create repository instance
-userRepo := repository.NewRepository[*User](db, handlers)
+userRepo := repository.MustNewRepository[*User](db, handlers)
 ```
 
 ### Basic Operations

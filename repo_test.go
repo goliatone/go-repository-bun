@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -52,8 +53,11 @@ func newTestUserRepository(db *bun.DB) Repository[*TestUser] {
 		GetIdentifier: func() string {
 			return "email"
 		},
+		GetIdentifierValue: func(record *TestUser) string {
+			return record.Email
+		},
 	}
-	return NewRepository[*TestUser](db, handlers)
+	return MustNewRepository[*TestUser](db, handlers)
 }
 
 func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {
@@ -70,8 +74,11 @@ func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {
 		GetIdentifier: func() string {
 			return "identifier"
 		},
+		GetIdentifierValue: func(record *TestCompany) string {
+			return record.Identifier
+		},
 	}
-	return NewRepository[*TestCompany](db, handlers)
+	return MustNewRepository[*TestCompany](db, handlers)
 }
 
 var db *bun.DB
@@ -81,6 +88,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	sqldb.SetMaxOpenConns(1)
+	sqldb.SetMaxIdleConns(1)
 	defer sqldb.Close()
 
 	db = bun.NewDB(sqldb, sqlitedialect.New())
@@ -95,6 +104,26 @@ func TestNewRepositories(t *testing.T) {
 	companyRepo := newTestCompanyRepository(db)
 	assert.NotNil(t, userRepo)
 	assert.NotNil(t, companyRepo)
+}
+
+func TestRepository_MustNewRepository_InvalidConfigPanics(t *testing.T) {
+	assert.Panics(t, func() {
+		MustNewRepository[*TestUser](nil, ModelHandlers[*TestUser]{})
+	})
+}
+
+func TestRepository_ValidateReturnsValidationErrors(t *testing.T) {
+	repo := &repo[*TestUser]{
+		db:       nil,
+		handlers: ModelHandlers[*TestUser]{},
+	}
+
+	err := repo.Validate()
+	assert.Error(t, err)
+
+	validationErrors, ok := goerrors.GetValidationErrors(err)
+	assert.True(t, ok)
+	assert.NotEmpty(t, validationErrors)
 }
 
 func TestRepository_Create(t *testing.T) {
@@ -519,6 +548,68 @@ func TestRepository_Upsert_Insert(t *testing.T) {
 	assert.Equal(t, user.ID, retrievedUser.ID)
 }
 
+func TestRepository_Upsert_UsesIdentifierWhenIDMissing(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	existing := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Existing User",
+		Email:     "existing@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	existing, err := userRepo.CreateTx(ctx, db, existing)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		Name:      "Updated Existing User",
+		Email:     existing.Email,
+		CompanyID: existing.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	upserted, err := userRepo.Upsert(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, existing.ID, upserted.ID)
+	assert.Equal(t, "Updated Existing User", upserted.Name)
+
+	reloaded, err := userRepo.GetByID(ctx, existing.ID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, "Updated Existing User", reloaded.Name)
+}
+
+func TestRepository_GetOrCreate_UsesIdentifierWhenIDMissing(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	companyRepo := newTestCompanyRepository(db)
+
+	existing := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Existing Company",
+		Identifier: "company-123",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err := companyRepo.CreateTx(ctx, db, existing)
+	assert.NoError(t, err)
+
+	payload := &TestCompany{
+		Name:       "Existing Company Updated",
+		Identifier: existing.Identifier,
+		UpdatedAt:  time.Now(),
+	}
+
+	found, err := companyRepo.GetOrCreate(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, existing.ID, found.ID)
+	assert.Equal(t, "Existing Company", found.Name)
+}
+
 func TestRepository_List(t *testing.T) {
 	setupTestData(t)
 
@@ -633,7 +724,7 @@ func setupTestData(t *testing.T) {
 }
 
 func createSchema(ctx context.Context, db *bun.DB) error {
-	models := []interface{}{
+	models := []any{
 		(*TestCompany)(nil),
 		(*TestUser)(nil),
 	}
@@ -647,7 +738,7 @@ func createSchema(ctx context.Context, db *bun.DB) error {
 }
 
 func dropSchema(ctx context.Context, db *bun.DB) error {
-	models := []interface{}{
+	models := []any{
 		(*TestUser)(nil),
 		(*TestCompany)(nil),
 	}

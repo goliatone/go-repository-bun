@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/goliatone/go-errors"
 	"github.com/google/uuid"
@@ -77,6 +79,7 @@ type repo[T any] struct {
 	handlers ModelHandlers[T]
 	fields   []ModelField
 	driver   string
+	fieldsMu sync.Mutex
 }
 
 type ModelHandlers[T any] struct {
@@ -84,6 +87,9 @@ type ModelHandlers[T any] struct {
 	GetID         func(T) uuid.UUID
 	SetID         func(T, uuid.UUID)
 	GetIdentifier func() string
+	// GetIdentifierValue returns the value for the identifier column.
+	// Return an empty string to indicate that the identifier is not available.
+	GetIdentifierValue func(T) string
 }
 
 func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
@@ -91,6 +97,24 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 		db:       db,
 		handlers: handlers,
 		driver:   DetectDriver(db),
+	}
+}
+
+func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
+	if err := validateRepositoryConfig(db, handlers); err != nil {
+		panic(err)
+	}
+
+	return NewRepository(db, handlers)
+}
+
+func (r *repo[T]) Validate() error {
+	return validateRepositoryConfig(r.db, r.handlers)
+}
+
+func (r *repo[T]) MustValidate() {
+	if err := r.Validate(); err != nil {
+		panic(err)
 	}
 }
 
@@ -107,9 +131,11 @@ func (r *repo[T]) mapError(err error) error {
 }
 
 func (r *repo[T]) GetModelFields() []ModelField {
+	r.fieldsMu.Lock()
+	defer r.fieldsMu.Unlock()
+
 	if len(r.fields) == 0 {
-		fields := GetModelFields(r.db, r.handlers.NewRecord())
-		r.fields = fields
+		r.fields = GetModelFields(r.db, r.handlers.NewRecord())
 	}
 	return r.fields
 }
@@ -267,21 +293,49 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	return records, nil
 }
 
+func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
+	var zero T
+
+	if r.handlers.GetID != nil {
+		if id := r.handlers.GetID(record); id != uuid.Nil {
+			existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
+			if err == nil {
+				return existing, true, nil
+			}
+			if !IsRecordNotFound(err) {
+				return zero, false, err
+			}
+		}
+	}
+
+	if r.handlers.GetIdentifierValue != nil {
+		if value := strings.TrimSpace(r.handlers.GetIdentifierValue(record)); value != "" {
+			existing, err := r.GetByIdentifierTx(ctx, tx, value)
+			if err == nil {
+				return existing, true, nil
+			}
+			if !IsRecordNotFound(err) {
+				return zero, false, err
+			}
+		}
+	}
+
+	return zero, false, nil
+}
+
 func (r *repo[T]) GetOrCreate(ctx context.Context, record T) (T, error) {
 	return r.GetOrCreateTx(ctx, r.db, record)
 }
 
 func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, error) {
-	id := r.handlers.GetID(record)
-	// GetField(field)
-	existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
-	if err == nil {
-		return existing, nil
-	}
-
-	if !IsRecordNotFound(err) {
+	existing, found, err := r.findExistingRecord(ctx, tx, record)
+	if err != nil {
 		var zero T
 		return zero, r.mapError(err)
+	}
+
+	if found {
+		return existing, nil
 	}
 
 	return r.CreateTx(ctx, tx, record)
@@ -292,7 +346,12 @@ func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criter
 }
 
 func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error) {
-	column := r.handlers.GetIdentifier()
+	column := "id"
+	if r.handlers.GetIdentifier != nil {
+		if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
+			column = col
+		}
+	}
 	if isUUID(identifier) {
 		column = "id"
 	}
@@ -370,16 +429,17 @@ func (r *repo[T]) Upsert(ctx context.Context, record T, criteria ...UpdateCriter
 }
 
 func (r *repo[T]) UpsertTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error) {
-	id := r.handlers.GetID(record)
-	existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
-	if err == nil {
-		r.handlers.SetID(record, r.handlers.GetID(existing))
-		return r.UpdateTx(ctx, tx, record, criteria...)
-	}
-	if !IsRecordNotFound(err) {
+	existing, found, err := r.findExistingRecord(ctx, tx, record)
+	if err != nil {
 		var zero T
 		return zero, r.mapError(err)
 	}
+
+	if found {
+		r.handlers.SetID(record, r.handlers.GetID(existing))
+		return r.UpdateTx(ctx, tx, record, criteria...)
+	}
+
 	return r.CreateTx(ctx, tx, record)
 }
 
@@ -391,25 +451,26 @@ func (r *repo[T]) UpsertManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	var upsertedRecords []T
 
 	for _, record := range records {
-		id := r.handlers.GetID(record)
-		existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
+		existing, found, err := r.findExistingRecord(ctx, tx, record)
+		if err != nil {
+			return nil, r.mapError(err)
+		}
 
-		if err == nil {
+		if found {
 			r.handlers.SetID(record, r.handlers.GetID(existing))
 			updatedRecord, updateErr := r.UpdateTx(ctx, tx, record, criteria...)
 			if updateErr != nil {
 				return nil, r.mapError(updateErr)
 			}
 			upsertedRecords = append(upsertedRecords, updatedRecord)
-		} else if IsRecordNotFound(err) {
-			createdRecord, createErr := r.CreateTx(ctx, tx, record)
-			if createErr != nil {
-				return nil, r.mapError(createErr)
-			}
-			upsertedRecords = append(upsertedRecords, createdRecord)
-		} else {
-			return nil, r.mapError(err)
+			continue
 		}
+
+		createdRecord, createErr := r.CreateTx(ctx, tx, record)
+		if createErr != nil {
+			return nil, r.mapError(createErr)
+		}
+		upsertedRecords = append(upsertedRecords, createdRecord)
 	}
 
 	return upsertedRecords, nil
@@ -455,7 +516,7 @@ func (r *repo[T]) Delete(ctx context.Context, record T) error {
 func (r *repo[T]) DeleteTx(ctx context.Context, tx bun.IDB, record T) error {
 	q := tx.NewDelete().Model(record).WherePK()
 	_, err := q.Exec(ctx)
-	return err
+	return r.mapError(err)
 }
 
 func (r *repo[T]) DeleteMany(ctx context.Context, criteria ...DeleteCriteria) error {
@@ -474,10 +535,10 @@ func (r *repo[T]) DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...Del
 	record := r.handlers.NewRecord()
 	q := tx.NewDelete().Model(record)
 	for _, c := range criteria {
-		q = c(q)
+		q.Apply(c)
 	}
 	_, err := q.Exec(ctx)
-	return err
+	return r.mapError(err)
 }
 
 func (r *repo[T]) ForceDelete(ctx context.Context, record T) error {
@@ -487,7 +548,7 @@ func (r *repo[T]) ForceDelete(ctx context.Context, record T) error {
 func (r *repo[T]) ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error {
 	q := tx.NewDelete().Model(record).WherePK().ForceDelete()
 	_, err := q.Exec(ctx)
-	return err
+	return r.mapError(err)
 }
 
 func (r *repo[T]) TableName() string {
@@ -508,4 +569,59 @@ func DetectDriver(db *bun.DB) string {
 	default:
 		return "unknown"
 	}
+}
+
+func validateRepositoryConfig[T any](db *bun.DB, handlers ModelHandlers[T]) error {
+	var validationErrors errors.ValidationErrors
+
+	if db == nil {
+		validationErrors = append(validationErrors, errors.FieldError{
+			Field:   "db",
+			Message: "db instance is required",
+		})
+	}
+
+	if handlers.NewRecord == nil {
+		validationErrors = append(validationErrors, errors.FieldError{
+			Field:   "handlers.NewRecord",
+			Message: "handler is required",
+		})
+	}
+
+	if handlers.GetID == nil {
+		validationErrors = append(validationErrors, errors.FieldError{
+			Field:   "handlers.GetID",
+			Message: "handler is required",
+		})
+	}
+
+	if handlers.SetID == nil {
+		validationErrors = append(validationErrors, errors.FieldError{
+			Field:   "handlers.SetID",
+			Message: "handler is required",
+		})
+	}
+
+	if (handlers.GetIdentifier == nil) != (handlers.GetIdentifierValue == nil) {
+		validationErrors = append(validationErrors, errors.FieldError{
+			Field:   "handlers",
+			Message: "GetIdentifier and GetIdentifierValue must both be provided or both nil",
+		})
+	}
+
+	if handlers.GetIdentifier != nil {
+		column := strings.TrimSpace(handlers.GetIdentifier())
+		if column == "" {
+			validationErrors = append(validationErrors, errors.FieldError{
+				Field:   "handlers.GetIdentifier",
+				Message: "must return a non-empty column name",
+			})
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return errors.NewValidation("repository configuration invalid", validationErrors...)
+	}
+
+	return nil
 }

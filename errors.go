@@ -12,7 +12,7 @@ import (
 
 const (
 	CategoryDatabase              = errors.Category("database")
-	CategoryDatabaseNotFound      = errors.Category("database_not_found")
+	CategoryDatabaseNotFound      = errors.Category("database_not-found")
 	CategoryDatabaseConstraint    = errors.Category("database_constraint")
 	CategoryDatabaseDuplicate     = errors.Category("database_duplicate")
 	CategoryDatabaseConnection    = errors.Category("database_connection")
@@ -20,7 +20,7 @@ const (
 	CategoryDatabaseLock          = errors.Category("database_lock")
 	CategoryDatabasePermission    = errors.Category("database_permission")
 	CategoryDatabaseSyntax        = errors.Category("database_syntax")
-	CategoryDatabaseExpectedCount = errors.Category("database_expected_count")
+	CategoryDatabaseExpectedCount = errors.Category("database_expected-count")
 )
 
 // DatabaseErrorMapper maps database specific errors to standardized errors
@@ -44,6 +44,19 @@ func MapDatabaseError(err error, driver string) error {
 		return nil
 	}
 
+	if errors.IsWrapped(err) {
+		rootCat := errors.RootCategory(err)
+		if isDatabaseCategory(rootCat) {
+			return err
+		}
+
+		wrapped := errors.NewRetryable("Database operation failed", CategoryDatabase).
+			WithCode(errors.CodeInternal).
+			WithTextCode("DATABASE_ERROR")
+		wrapped.BaseError.Source = err
+		return wrapped
+	}
+
 	mappers := GetDatabaseErrorMappers(driver)
 	for _, mapper := range mappers {
 		if mappedErr := mapper(err); mappedErr != nil {
@@ -54,6 +67,24 @@ func MapDatabaseError(err error, driver string) error {
 	return errors.WrapRetryable(err, CategoryDatabase, "Database operation failed").
 		WithCode(errors.CodeInternal).
 		WithTextCode("DATABASE_ERROR")
+}
+
+func isDatabaseCategory(cat errors.Category) bool {
+	switch cat {
+	case CategoryDatabase,
+		CategoryDatabaseNotFound,
+		CategoryDatabaseConstraint,
+		CategoryDatabaseDuplicate,
+		CategoryDatabaseConnection,
+		CategoryDatabaseTimeout,
+		CategoryDatabaseLock,
+		CategoryDatabasePermission,
+		CategoryDatabaseSyntax,
+		CategoryDatabaseExpectedCount:
+		return true
+	default:
+		return false
+	}
 }
 
 func MapPostgresErrors(err error) error {

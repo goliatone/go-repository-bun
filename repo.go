@@ -230,7 +230,11 @@ func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 
 	// TODO: what would be the proper way to getting the returned records from the insert?
 	_, err := q.Returning("*").Exec(ctx)
-	return record, err
+	if err != nil {
+		var zero T
+		return zero, r.mapError(err)
+	}
+	return record, nil
 }
 
 func (r *repo[T]) CreateMany(ctx context.Context, records []T, criteria ...InsertCriteria) ([]T, error) {
@@ -322,7 +326,7 @@ func (r *repo[T]) UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 
 	if err != nil {
 		var zero T
-		return zero, err
+		return zero, r.mapError(err)
 	}
 
 	if err = SQLExpectedCount(res, 1); err != nil {
@@ -459,7 +463,7 @@ func (r *repo[T]) DeleteMany(ctx context.Context, criteria ...DeleteCriteria) er
 }
 
 func (r *repo[T]) DeleteManyTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error {
-	return r.DeleteWhereTx(ctx, r.db, criteria...)
+	return r.DeleteWhereTx(ctx, tx, criteria...)
 }
 
 func (r *repo[T]) DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) error {

@@ -1,5 +1,26 @@
 # Changelog
 
+# [unreleased]
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Select subquery to accept alias ([2354616](https://github.com/goliatone/go-repository-bun/commit/2354616719d376d587ebab60e8b322a1d69cd014))  - (goliatone)
+- Do not override configured column when value is UUID ([832464a](https://github.com/goliatone/go-repository-bun/commit/832464a336203cd91daebeda4c9b4377b2e50ab7))  - (goliatone)
+- Typo in table extration, fallback for name ([f406630](https://github.com/goliatone/go-repository-bun/commit/f40663012fcfc55644bf33e227c11e03a7abb020))  - (goliatone)
+- Update release task ([0aa662c](https://github.com/goliatone/go-repository-bun/commit/0aa662c2bed89218134aa6020a848050042066e8))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Release manager meta ([e78f04d](https://github.com/goliatone/go-repository-bun/commit/e78f04d8a5b77e3b59be9607ebaf66a9a901640c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.5.3 ([1fffe51](https://github.com/goliatone/go-repository-bun/commit/1fffe5112f69dfb247aa461eb916c00e8e57e1af))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([daf6f13](https://github.com/goliatone/go-repository-bun/commit/daf6f13c8a936afd10e25b8dba4435add6e0ad6d))  - (goliatone)
+
 # [0.5.3](https://github.com/goliatone/go-repository-bun/compare/v0.5.2...v0.5.3) - (2025-10-16)
 
 ## <!-- 1 -->🐛 Bug Fixes

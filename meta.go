@@ -82,7 +82,7 @@ func GenerateModelMeta(model any) ModelMeta {
 			bunTag := field.Tag.Get("bun")
 			parts := strings.Split(bunTag, ",")
 			for _, part := range parts {
-				if name, ok := strings.CutPrefix(part, ":table"); ok && name != "" {
+				if name, ok := strings.CutPrefix(part, "table:"); ok && name != "" {
 					meta.TableName = name
 					break
 				}
@@ -95,7 +95,7 @@ func GenerateModelMeta(model any) ModelMeta {
 
 		fieldMeta := FieldMeta{
 			StructName: field.Name,
-			Name:       getJSONName(jsonTag),
+			Name:       getJSONName(jsonTag, field.Name),
 			Type:       getFieldType(field.Type),
 		}
 
@@ -130,15 +130,22 @@ func getTableName(model any) string {
 	return strings.ToLower(typ.Name())
 }
 
-func getJSONName(jsonTag string) string {
+func getJSONName(jsonTag string, fallback string) string {
 	if jsonTag == "" {
-		return ""
+		return fallback
 	}
 	parts := strings.Split(jsonTag, ",")
-	if parts[0] == "-" {
-		return ""
+	if len(parts) == 0 {
+		return fallback
 	}
-	return parts[0]
+	switch parts[0] {
+	case "-":
+		return ""
+	case "":
+		return fallback
+	default:
+		return parts[0]
+	}
 }
 
 func getFieldType(t reflect.Type) string {

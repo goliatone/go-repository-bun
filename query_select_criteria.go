@@ -15,9 +15,15 @@ func SelectPaginate(limit, offset int) SelectCriteria {
 	}
 }
 
-func SelectSubquery(subq *bun.SelectQuery) SelectCriteria {
+func SelectSubquery(subq *bun.SelectQuery, aliases ...string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.TableExpr("(?) AS book", subq)
+		alias := "subquery"
+		if len(aliases) > 0 {
+			if a := strings.TrimSpace(aliases[0]); a == "" {
+				alias = a
+			}
+		}
+		return sq.TableExpr("(?) AS ?", subq, bun.Ident(alias))
 	}
 }
 

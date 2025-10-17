@@ -246,6 +246,30 @@ func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
 	assert.True(t, IsRecordNotFound(err))
 }
 
+func TestRepository_GetByIdentifier_UUIDStringInCustomColumn(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	companyRepo := newTestCompanyRepository(db)
+
+	identifier := uuid.NewString()
+	company := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "UUID Company",
+		Identifier: identifier,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	_, err := companyRepo.CreateTx(ctx, db, company)
+	assert.NoError(t, err)
+
+	retrievedCompany, err := companyRepo.GetByIdentifier(ctx, identifier)
+	assert.NoError(t, err)
+	assert.Equal(t, company.ID, retrievedCompany.ID)
+	assert.Equal(t, company.Identifier, retrievedCompany.Identifier)
+}
+
 func TestRepository_Update(t *testing.T) {
 	setupTestData(t)
 

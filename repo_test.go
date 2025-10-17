@@ -733,6 +733,51 @@ func TestRepository_ListTx(t *testing.T) {
 	assert.Equal(t, 35, total, "Total should reflect all records")
 }
 
+func TestRepository_GetModelFields_InvalidatesPerModelType(t *testing.T) {
+	setupTestData(t)
+
+	toggle := false
+
+	handlers := ModelHandlers[any]{
+		NewRecord: func() any {
+			if toggle {
+				return &TestCompany{}
+			}
+			return &TestUser{}
+		},
+		GetID: func(record any) uuid.UUID {
+			return uuid.Nil
+		},
+		SetID: func(record any, id uuid.UUID) {},
+	}
+
+	rawRepo := NewRepository[any](db, handlers)
+	concreteRepo := rawRepo.(*repo[any])
+
+	fieldsUser := concreteRepo.GetModelFields()
+	toggle = true
+	fieldsCompany := concreteRepo.GetModelFields()
+
+	assert.NotEqual(t, fieldsUser, fieldsCompany)
+
+	var hasEmail, hasIdentifier bool
+	for _, field := range fieldsUser {
+		if field.Name == "Email" || field.Name == "email" {
+			hasEmail = true
+			break
+		}
+	}
+	for _, field := range fieldsCompany {
+		if field.Name == "Identifier" || field.Name == "identifier" {
+			hasIdentifier = true
+			break
+		}
+	}
+
+	assert.True(t, hasEmail, "expected user fields to include Email")
+	assert.True(t, hasIdentifier, "expected company fields to include Identifier")
+}
+
 func setupTestData(t *testing.T) {
 	ctx := context.Background()
 

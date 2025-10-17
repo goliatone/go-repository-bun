@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -77,7 +78,7 @@ type Meta[T any] interface {
 type repo[T any] struct {
 	db       *bun.DB
 	handlers ModelHandlers[T]
-	fields   []ModelField
+	fields   map[reflect.Type][]ModelField
 	driver   string
 	fieldsMu sync.Mutex
 }
@@ -134,10 +135,38 @@ func (r *repo[T]) GetModelFields() []ModelField {
 	r.fieldsMu.Lock()
 	defer r.fieldsMu.Unlock()
 
-	if len(r.fields) == 0 {
-		r.fields = GetModelFields(r.db, r.handlers.NewRecord())
+	if r.fields == nil {
+		r.fields = make(map[reflect.Type][]ModelField)
 	}
-	return r.fields
+
+	record := r.handlers.NewRecord()
+	if isNilValue(any(record)) {
+		panic("repository: handlers.NewRecord returned nil; cannot determine model fields")
+	}
+
+	modelType := reflect.TypeOf(record)
+
+	if fields, ok := r.fields[modelType]; ok {
+		return fields
+	}
+
+	fields := GetModelFields(r.db, record)
+	r.fields[modelType] = fields
+	return fields
+}
+
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+
+	val := reflect.ValueOf(v)
+	switch val.Kind() {
+	case reflect.Interface, reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func:
+		return val.IsNil()
+	default:
+		return false
+	}
 }
 
 func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error) {

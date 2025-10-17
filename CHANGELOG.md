@@ -4,10 +4,26 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Fields cache ([ad5f689](https://github.com/goliatone/go-repository-bun/commit/ad5f689f64aa8f832bd5f80a82ba6b32ac5a2d5c))  - (goliatone)
+- Cache invalidation for model fields ([0252766](https://github.com/goliatone/go-repository-bun/commit/0252766d778597157a7b8307a9903dde4801346f))  - (goliatone)
+- Select criteria for subqueries ([81792e7](https://github.com/goliatone/go-repository-bun/commit/81792e7e05bc172ba09de535e311196e45a479e8))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([7f56044](https://github.com/goliatone/go-repository-bun/commit/7f56044758b07e89b38ba897ea1fa09d0fba531c))  - (goliatone)
+
+# [0.5.4](https://github.com/goliatone/go-repository-bun/compare/v0.5.3...v0.5.4) - (2025-10-17)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Select subquery to accept alias ([2354616](https://github.com/goliatone/go-repository-bun/commit/2354616719d376d587ebab60e8b322a1d69cd014))  - (goliatone)
 - Do not override configured column when value is UUID ([832464a](https://github.com/goliatone/go-repository-bun/commit/832464a336203cd91daebeda4c9b4377b2e50ab7))  - (goliatone)
 - Typo in table extration, fallback for name ([f406630](https://github.com/goliatone/go-repository-bun/commit/f40663012fcfc55644bf33e227c11e03a7abb020))  - (goliatone)
 - Update release task ([0aa662c](https://github.com/goliatone/go-repository-bun/commit/0aa662c2bed89218134aa6020a848050042066e8))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.5.4 ([8bc2b83](https://github.com/goliatone/go-repository-bun/commit/8bc2b831a73c207fdc9cd645b1ee16f40a60b0bb))  - (goliatone)
 
 ## <!-- 22 -->🚧 WIP
 

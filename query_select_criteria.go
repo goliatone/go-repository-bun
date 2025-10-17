@@ -17,14 +17,41 @@ func SelectPaginate(limit, offset int) SelectCriteria {
 
 func SelectSubquery(subq *bun.SelectQuery, aliases ...string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		alias := "subquery"
+		alias := defaultSubqueryAlias(subq)
 		if len(aliases) > 0 {
-			if a := strings.TrimSpace(aliases[0]); a == "" {
-				alias = a
+			if override := strings.TrimSpace(aliases[0]); override != "" {
+				alias = override
 			}
 		}
 		return sq.TableExpr("(?) AS ?", subq, bun.Ident(alias))
 	}
+}
+
+func defaultSubqueryAlias(subq *bun.SelectQuery) string {
+	if subq == nil {
+		return "subquery"
+	}
+
+	tableName := strings.TrimSpace(subq.GetTableName())
+	if tableName == "" {
+		return "subquery"
+	}
+
+	fields := strings.Fields(tableName)
+	if len(fields) > 0 {
+		tableName = fields[0]
+	}
+
+	if dot := strings.LastIndex(tableName, "."); dot != -1 {
+		tableName = tableName[dot+1:]
+	}
+
+	tableName = strings.Trim(tableName, "`\"'")
+	if tableName == "" {
+		return "subquery"
+	}
+
+	return tableName
 }
 
 func SelectColumnCompare(col1, operator, col2 string) SelectCriteria {

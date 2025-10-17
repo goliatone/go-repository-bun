@@ -298,7 +298,7 @@ func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) 
 
 	if r.handlers.GetID != nil {
 		if id := r.handlers.GetID(record); id != uuid.Nil {
-			existing, err := r.GetByIdentifierTx(ctx, tx, id.String())
+			existing, err := r.GetByIDTx(ctx, tx, id.String())
 			if err == nil {
 				return existing, true, nil
 			}
@@ -351,9 +351,6 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 		if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
 			column = col
 		}
-	}
-	if isUUID(identifier) {
-		column = "id"
 	}
 	record := r.handlers.NewRecord()
 	q := tx.NewSelect().Model(record)

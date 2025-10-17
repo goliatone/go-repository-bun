@@ -751,14 +751,12 @@ func TestRepository_GetModelFields_InvalidatesPerModelType(t *testing.T) {
 		SetID: func(record any, id uuid.UUID) {},
 	}
 
-	rawRepo := NewRepository[any](db, handlers)
+	rawRepo := NewRepository(db, handlers)
 	concreteRepo := rawRepo.(*repo[any])
 
 	fieldsUser := concreteRepo.GetModelFields()
 	toggle = true
 	fieldsCompany := concreteRepo.GetModelFields()
-
-	assert.NotEqual(t, fieldsUser, fieldsCompany)
 
 	var hasEmail, hasIdentifier bool
 	for _, field := range fieldsUser {
@@ -818,8 +816,4 @@ func dropSchema(ctx context.Context, db *bun.DB) error {
 		}
 	}
 	return nil
-}
-
-func uuidPtr(u uuid.UUID) *uuid.UUID {
-	return &u
 }

@@ -135,16 +135,16 @@ func (r *repo[T]) GetModelFields() []ModelField {
 	r.fieldsMu.Lock()
 	defer r.fieldsMu.Unlock()
 
-	if r.fields == nil {
-		r.fields = make(map[reflect.Type][]ModelField)
-	}
-
 	record := r.handlers.NewRecord()
 	if isNilValue(any(record)) {
 		panic("repository: handlers.NewRecord returned nil; cannot determine model fields")
 	}
 
 	modelType := reflect.TypeOf(record)
+
+	if r.fields == nil {
+		r.fields = make(map[reflect.Type][]ModelField)
+	}
 
 	if fields, ok := r.fields[modelType]; ok {
 		return fields
@@ -155,18 +155,10 @@ func (r *repo[T]) GetModelFields() []ModelField {
 	return fields
 }
 
-func isNilValue(v any) bool {
-	if v == nil {
-		return true
-	}
-
-	val := reflect.ValueOf(v)
-	switch val.Kind() {
-	case reflect.Interface, reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func:
-		return val.IsNil()
-	default:
-		return false
-	}
+func (r *repo[T]) ResetModelFields() {
+	r.fieldsMu.Lock()
+	defer r.fieldsMu.Unlock()
+	r.fields = nil
 }
 
 func (r *repo[T]) Raw(ctx context.Context, sql string, args ...any) ([]T, error) {
@@ -650,4 +642,18 @@ func validateRepositoryConfig[T any](db *bun.DB, handlers ModelHandlers[T]) erro
 	}
 
 	return nil
+}
+
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+
+	val := reflect.ValueOf(v)
+	switch val.Kind() {
+	case reflect.Interface, reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func:
+		return val.IsNil()
+	default:
+		return false
+	}
 }

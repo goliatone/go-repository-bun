@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/goliatone/go-errors"
 	"github.com/lib/pq"
@@ -37,6 +38,12 @@ func GetDatabaseErrorMappers(driver string) []DatabaseErrorMapper {
 	default:
 		return []DatabaseErrorMapper{MapCommonDatabaseErrors}
 	}
+}
+
+func newRetryableDatabaseConnectionError(message string) *errors.RetryableError {
+	return errors.NewRetryable(message, CategoryDatabaseConnection).
+		WithRetryDelay(2 * time.Second).
+		WithCode(502)
 }
 
 func MapDatabaseError(err error, driver string) error {
@@ -136,7 +143,7 @@ func MapPostgresErrors(err error) error {
 			WithTextCode("DEADLOCK_DETECTED")
 
 	case "08000", "08003", "08006": // connection errors, retryable
-		return errors.NewRetryableExternal("Database connection error").
+		return newRetryableDatabaseConnectionError("Database connection error").
 			WithTextCode("CONNECTION_ERROR")
 
 	case "42501": // insufficient privilege
@@ -164,10 +171,10 @@ func MapCommonDatabaseErrors(err error) error {
 			WithCode(errors.CodeBadRequest).
 			WithTextCode("TRANSACTION_DONE")
 	case err == sql.ErrConnDone:
-		return errors.NewRetryableExternal("Database connection is closed").
+		return newRetryableDatabaseConnectionError("Database connection is closed").
 			WithTextCode("CONNECTION_CLOSED")
 	case strings.Contains(err.Error(), "connection refused"):
-		return errors.NewRetryableExternal("Database connection refused").
+		return newRetryableDatabaseConnectionError("Database connection refused").
 			WithTextCode("CONNECTION_REFUSED")
 	case strings.Contains(err.Error(), "timeout"):
 		return errors.NewRetryableOperation("Database operation timeout", 2000).

@@ -205,6 +205,9 @@ func SelectOrderAsc(column string) SelectCriteria {
 // - values: It should be a slice i.e. of IDs
 func SelectColumnIn[T any](column string, slice []T) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		if len(slice) == 0 {
+			return q
+		}
 		// fmt.Sprintf("?TableAlias.%s
 		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.In(slice))
 	}
@@ -214,6 +217,9 @@ func SelectColumnIn[T any](column string, slice []T) SelectCriteria {
 // - values: It should be a slice i.e. of IDs
 func SelectColumnNotIn[T any](column string, slice []T) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		if len(slice) == 0 {
+			return q
+		}
 		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.In(slice))
 	}
 }
@@ -234,8 +240,12 @@ func SelectColumnInSubq(column string, query string, args ...any) SelectCriteria
 //				WHERE email is NOT NULL
 //	  )
 func SelectColumnNotInSubq(column string, query string, args ...any) SelectCriteria {
+	trimmed := strings.TrimSpace(query)
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.SafeQuery(query, args...))
+		if trimmed == "" {
+			return q
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.SafeQuery(trimmed, args...))
 	}
 }
 

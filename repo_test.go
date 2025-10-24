@@ -257,24 +257,10 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 
 	const tenantScope = "tenant"
 
-	userRepo.RegisterScope(tenantScope, ScopeDefinition{
-		Select: func(ctx context.Context) []SelectCriteria {
-			val, ok := ScopeData(ctx, tenantScope)
-			if !ok {
-				return nil
-			}
-			tenantID, ok := val.(uuid.UUID)
-			if !ok || tenantID == uuid.Nil {
-				return nil
-			}
-			return []SelectCriteria{
-				SelectBy("company_id", "=", tenantID.String()),
-			}
-		},
-	})
-	userRepo.SetScopeDefaults(ScopeDefaults{
+	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
+	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
 		Select: []string{tenantScope},
-	})
+	}))
 
 	tenantCompany := &TestCompany{
 		ID:         uuid.New(),
@@ -331,6 +317,23 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 	}
 }
 
+func TestRepository_SetScopeDefaults_UnknownScope(t *testing.T) {
+	setupTestData(t)
+
+	repo := newTestUserRepository(db)
+
+	err := repo.SetScopeDefaults(ScopeDefaults{
+		Select: []string{"missing"},
+	})
+	assert.Error(t, err)
+
+	validationErrors, ok := goerrors.GetValidationErrors(err)
+	assert.True(t, ok)
+	if assert.Len(t, validationErrors, 1) {
+		assert.Contains(t, validationErrors[0].Message, "missing")
+	}
+}
+
 func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 	setupTestData(t)
 
@@ -341,34 +344,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 
 	const tenantScope = "tenant"
 
-	userRepo.RegisterScope(tenantScope, ScopeDefinition{
-		Select: func(ctx context.Context) []SelectCriteria {
-			val, ok := ScopeData(ctx, tenantScope)
-			if !ok {
-				return nil
-			}
-			tenantID, ok := val.(uuid.UUID)
-			if !ok || tenantID == uuid.Nil {
-				return nil
-			}
-			return []SelectCriteria{
-				SelectBy("company_id", "=", tenantID.String()),
-			}
-		},
-		Update: func(ctx context.Context) []UpdateCriteria {
-			val, ok := ScopeData(ctx, tenantScope)
-			if !ok {
-				return nil
-			}
-			tenantID, ok := val.(uuid.UUID)
-			if !ok || tenantID == uuid.Nil {
-				return nil
-			}
-			return []UpdateCriteria{
-				UpdateBy("company_id", "=", tenantID.String()),
-			}
-		},
-	})
+	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
 
 	tenantCompany := &TestCompany{
 		ID:         uuid.New(),
@@ -671,9 +647,9 @@ func TestRepository_GetOrCreateTx_ReturnsExistingOnDuplicateRace(t *testing.T) {
 			}
 		},
 	})
-	repoImpl.SetScopeDefaults(ScopeDefaults{
+	assert.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
 		Insert: []string{blockerScope},
-	})
+	}))
 
 	blocker := &insertBlocker{
 		ready:   make(chan struct{}, 1),

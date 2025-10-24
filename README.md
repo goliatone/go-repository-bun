@@ -136,6 +136,60 @@ user := &User{ID: someID, Name: "Updated Name", Email: "email@example.com"}
 result, err := userRepo.Upsert(ctx, user)
 ```
 
+### Scopes
+
+Scopes let you register reusable filters that are applied automatically to repository operations.
+
+```go
+const tenantScope = "tenant"
+
+userRepo.RegisterScope(tenantScope, repository.ScopeDefinition{
+    Select: func(ctx context.Context) []repository.SelectCriteria {
+        value, ok := repository.ScopeData(ctx, tenantScope)
+        if !ok {
+            return nil
+        }
+        tenantID, ok := value.(uuid.UUID)
+        if !ok || tenantID == uuid.Nil {
+            return nil
+        }
+        return []repository.SelectCriteria{
+            repository.SelectBy("company_id", "=", tenantID.String()),
+        }
+    },
+})
+
+if err := userRepo.SetScopeDefaults(repository.ScopeDefaults{
+    Select: []string{tenantScope},
+}); err != nil {
+    panic(err)
+}
+```
+
+To avoid duplicating the same guard logic in every scope, register the helper instead:
+
+```go
+userRepo.RegisterScope(tenantScope, repository.ScopeByField(tenantScope, "company_id"))
+```
+
+Activate scopes through the context. Default scopes run automatically unless disabled:
+
+```go
+ctx := repository.WithScopeData(ctx, tenantScope, tenantID)
+users, total, err := userRepo.List(ctx) // tenant scope applied
+
+ctx = repository.WithoutDefaultScopes(ctx)
+ctx = repository.WithSelectScopes(ctx, tenantScope)
+ctx = repository.WithScopeData(ctx, tenantScope, tenantID)
+users, total, err = userRepo.List(ctx) // scope applied explicitly
+```
+
+Other operations can be scoped with `WithInsertScopes`, `WithUpdateScopes`, and `WithDeleteScopes`.
+
+When scope data is missing or empty, `ScopeByField` simply skips adding criteria, allowing the underlying query to execute unscoped. Supplying data of the wrong type (for example, anything that cannot be converted to a non-empty string or `uuid.UUID`) has the same effect—no scope filters are applied. To surface configuration mistakes early, `SetScopeDefaults` validates that every default references a registered scope and returns a validation error otherwise.
+
+If you need to propagate the active scope set into other infrastructure (for example, cache decorators), use `repository.ResolveScopeState(ctx, defaults, repository.ScopeOperationSelect)` together with `repository.ScopeDataSnapshot(ctx)` to build deterministic signatures.
+
 ### Query Criteria
 
 ```go

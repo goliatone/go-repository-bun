@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -246,6 +247,160 @@ func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
 	assert.True(t, IsRecordNotFound(err))
 }
 
+func TestRepository_Scopes_SelectDefault(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	companyRepo := newTestCompanyRepository(db)
+	userRepo := newTestUserRepository(db)
+	userRepo.(*repo[*TestUser]).resetScopes()
+
+	const tenantScope = "tenant"
+
+	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
+	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+		Select: []string{tenantScope},
+	}))
+
+	tenantCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Tenant Co",
+		Identifier: "tenant-co",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
+	assert.NoError(t, err)
+
+	otherCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Other Co",
+		Identifier: "other-co",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
+	assert.NoError(t, err)
+
+	users := []*TestUser{
+		{
+			ID:        uuid.New(),
+			Name:      "Tenant User",
+			Email:     "tenant@example.com",
+			CompanyID: tenantCompany.ID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			Name:      "Other User",
+			Email:     "other@example.com",
+			CompanyID: otherCompany.ID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+
+	for _, user := range users {
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	scopedCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
+
+	records, total, err := userRepo.List(scopedCtx)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, total)
+	if assert.Len(t, records, 1) {
+		assert.Equal(t, tenantCompany.ID, records[0].CompanyID)
+		assert.Equal(t, "Tenant User", records[0].Name)
+	}
+}
+
+func TestRepository_SetScopeDefaults_UnknownScope(t *testing.T) {
+	setupTestData(t)
+
+	repo := newTestUserRepository(db)
+
+	err := repo.SetScopeDefaults(ScopeDefaults{
+		Select: []string{"missing"},
+	})
+	assert.Error(t, err)
+
+	validationErrors, ok := goerrors.GetValidationErrors(err)
+	assert.True(t, ok)
+	if assert.Len(t, validationErrors, 1) {
+		assert.Contains(t, validationErrors[0].Message, "missing")
+	}
+}
+
+func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	companyRepo := newTestCompanyRepository(db)
+	userRepo := newTestUserRepository(db)
+	userRepo.(*repo[*TestUser]).resetScopes()
+
+	const tenantScope = "tenant"
+
+	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
+
+	tenantCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Tenant Co",
+		Identifier: "tenant-co",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
+	assert.NoError(t, err)
+
+	otherCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Other Co",
+		Identifier: "other-co",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
+	assert.NoError(t, err)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Tenant User",
+		Email:     "tenant@example.com",
+		CompanyID: tenantCompany.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	created, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+
+	wrongCtx := WithScopeData(ctx, tenantScope, otherCompany.ID)
+	wrongCtx = WithUpdateScopes(wrongCtx, tenantScope)
+
+	created.Name = "Updated Name"
+	created.UpdatedAt = time.Now()
+	_, err = userRepo.UpdateTx(wrongCtx, db, created)
+	assert.Error(t, err)
+	assert.True(t, IsSQLExpectedCountViolation(err))
+
+	reloaded, err := userRepo.GetByID(ctx, created.ID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, "Tenant User", reloaded.Name)
+
+	correctCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
+	correctCtx = WithUpdateScopes(correctCtx, tenantScope)
+
+	reloaded.Name = "Updated Again"
+	reloaded.UpdatedAt = time.Now()
+	updated, err := userRepo.UpdateTx(correctCtx, db, reloaded)
+	assert.NoError(t, err)
+	assert.Equal(t, "Updated Again", updated.Name)
+}
+
 func TestRepository_GetByIdentifier_UUIDStringInCustomColumn(t *testing.T) {
 	setupTestData(t)
 
@@ -310,9 +465,111 @@ func TestRepository_Update2(t *testing.T) {
 	payload := &TestUser{}
 	userRepo.Handlers().SetID(payload, user.ID)
 	payload.Email = "alice.j@example.com"
-	updatedUser, err := userRepo.UpdateTx(ctx, db, payload, UpdateByID(user.ID.String()))
+	payload.UpdatedAt = time.Now()
+	updatedUser, err := userRepo.UpdateTx(ctx, db, payload, UpdateByID(user.ID.String()), UpdateColumns("email", "updated_at"))
 	assert.NoError(t, err)
 	assert.Equal(t, "alice.j@example.com", updatedUser.Email)
+
+	reloaded, err := userRepo.GetByID(ctx, user.ID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, user.Name, reloaded.Name, "expected other fields to remain unchanged")
+}
+
+func TestRepository_Update_AllowsZeroValues(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "NonEmpty",
+		Email:     "zero@example.com",
+		CompanyID: uuid.New(),
+	}
+	created, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+
+	created.Name = ""
+	created.UpdatedAt = time.Now()
+
+	updated, err := userRepo.UpdateTx(ctx, db, created)
+	assert.NoError(t, err)
+
+	reloaded, err := userRepo.GetByID(ctx, updated.ID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, "", reloaded.Name, "expected zero value to persist after update")
+}
+
+func TestRepository_Update_SkipZeroValuesCriterion(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "KeepMe",
+		Email:     "skip-zero@example.com",
+		CompanyID: uuid.New(),
+	}
+	created, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+
+	payload := &TestUser{}
+	userRepo.Handlers().SetID(payload, created.ID)
+	payload.Name = ""
+	payload.Email = "skip-zero@example.com"
+	payload.UpdatedAt = time.Now()
+
+	_, err = userRepo.UpdateTx(ctx, db, payload, UpdateByID(created.ID.String()), UpdateSkipZeroValues())
+	assert.NoError(t, err)
+
+	reloaded, err := userRepo.GetByID(ctx, created.ID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, "KeepMe", reloaded.Name, "expected name to remain when UpdateSkipZeroValues is applied")
+}
+
+func TestRepository_UpdateMany_AllowsZeroValues(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	users := []*TestUser{
+		{
+			ID:        uuid.New(),
+			Name:      "First",
+			Email:     "first@example.com",
+			CompanyID: uuid.New(),
+		},
+		{
+			ID:        uuid.New(),
+			Name:      "Second",
+			Email:     "second@example.com",
+			CompanyID: uuid.New(),
+		},
+	}
+
+	for _, user := range users {
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	users[0].Name = ""
+	users[0].UpdatedAt = time.Now()
+	users[1].Name = ""
+	users[1].UpdatedAt = time.Now()
+
+	updated, err := userRepo.UpdateManyTx(ctx, db, users)
+	assert.NoError(t, err)
+	assert.Len(t, updated, 2)
+
+	for _, original := range users {
+		reloaded, err := userRepo.GetByID(ctx, original.ID.String())
+		assert.NoError(t, err)
+		assert.Equal(t, "", reloaded.Name, "expected zero value to persist after bulk update")
+	}
 }
 
 func TestRepository_Delete(t *testing.T) {
@@ -360,6 +617,94 @@ func TestRepository_GetOrCreate(t *testing.T) {
 	secondCallCompany, err := companyRepo.GetOrCreateTx(ctx, db, company)
 	assert.NoError(t, err)
 	assert.Equal(t, firstCallCompany.ID, secondCallCompany.ID)
+}
+
+func TestRepository_GetOrCreateTx_ReturnsExistingOnDuplicateRace(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+	repoImpl := userRepo.(*repo[*TestUser])
+	repoImpl.resetScopes()
+
+	const blockerScope = "test-insert-blocker"
+	repoImpl.RegisterScope(blockerScope, ScopeDefinition{
+		Insert: func(ctx context.Context) []InsertCriteria {
+			val, ok := ScopeData(ctx, blockerScope)
+			if !ok {
+				return nil
+			}
+			blocker, ok := val.(*insertBlocker)
+			if !ok || blocker == nil {
+				return nil
+			}
+			return []InsertCriteria{
+				func(q *bun.InsertQuery) *bun.InsertQuery {
+					blocker.ready <- struct{}{}
+					<-blocker.proceed
+					return q
+				},
+			}
+		},
+	})
+	assert.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
+		Insert: []string{blockerScope},
+	}))
+
+	blocker := &insertBlocker{
+		ready:   make(chan struct{}, 1),
+		proceed: make(chan struct{}, 1),
+	}
+
+	scopeCtx := WithScopeData(ctx, blockerScope, blocker)
+
+	now := time.Now()
+
+	record := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Original Name",
+		Email:     "duplicate-race@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	var (
+		result  *TestUser
+		callErr error
+		wg      sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		res, err := userRepo.GetOrCreateTx(scopeCtx, db, record)
+		result = res
+		callErr = err
+	}()
+
+	<-blocker.ready
+
+	manual := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Manual Insert",
+		Email:     record.Email,
+		CompanyID: record.CompanyID,
+		CreatedAt: now.Add(1 * time.Millisecond),
+		UpdatedAt: now.Add(1 * time.Millisecond),
+	}
+	_, err := userRepo.CreateTx(ctx, db, manual)
+	assert.NoError(t, err)
+
+	blocker.proceed <- struct{}{}
+	wg.Wait()
+
+	assert.NoError(t, callErr)
+	if assert.NotNil(t, result) {
+		assert.Equal(t, manual.Email, result.Email)
+		assert.Equal(t, manual.Name, result.Name)
+		assert.Equal(t, manual.ID, result.ID)
+	}
 }
 
 func TestRepository_DeleteWhere(t *testing.T) {
@@ -816,4 +1161,9 @@ func dropSchema(ctx context.Context, db *bun.DB) error {
 		}
 	}
 	return nil
+}
+
+type insertBlocker struct {
+	ready   chan struct{}
+	proceed chan struct{}
 }

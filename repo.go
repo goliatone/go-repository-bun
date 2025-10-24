@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -23,6 +25,26 @@ type DeleteCriteria func(*bun.DeleteQuery) *bun.DeleteQuery
 
 // InsertCriteria is the function we use to create insert queries
 type InsertCriteria func(*bun.InsertQuery) *bun.InsertQuery
+
+type ScopeSelectFunc func(context.Context) []SelectCriteria
+type ScopeUpdateFunc func(context.Context) []UpdateCriteria
+type ScopeInsertFunc func(context.Context) []InsertCriteria
+type ScopeDeleteFunc func(context.Context) []DeleteCriteria
+
+type ScopeDefinition struct {
+	Select ScopeSelectFunc
+	Update ScopeUpdateFunc
+	Insert ScopeInsertFunc
+	Delete ScopeDeleteFunc
+}
+
+type ScopeDefaults struct {
+	All    []string
+	Select []string
+	Update []string
+	Insert []string
+	Delete []string
+}
 
 type Repository[T any] interface {
 	Raw(ctx context.Context, sql string, args ...any) ([]T, error)
@@ -69,6 +91,9 @@ type Repository[T any] interface {
 	ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
 
 	Handlers() ModelHandlers[T]
+	RegisterScope(name string, scope ScopeDefinition)
+	SetScopeDefaults(defaults ScopeDefaults) error
+	GetScopeDefaults() ScopeDefaults
 }
 
 type Meta[T any] interface {
@@ -81,6 +106,17 @@ type repo[T any] struct {
 	fields   map[reflect.Type][]ModelField
 	driver   string
 	fieldsMu sync.Mutex
+	scopes   map[string]ScopeDefinition
+	scopesMu sync.RWMutex
+
+	scopeDefaults ScopeDefaults
+}
+
+func (r *repo[T]) resetScopes() {
+	r.scopesMu.Lock()
+	defer r.scopesMu.Unlock()
+	r.scopes = nil
+	r.scopeDefaults = ScopeDefaults{}
 }
 
 type ModelHandlers[T any] struct {
@@ -179,6 +215,39 @@ func (r *repo[T]) Handlers() ModelHandlers[T] {
 	return r.handlers
 }
 
+func (r *repo[T]) RegisterScope(name string, scope ScopeDefinition) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+
+	r.scopesMu.Lock()
+	if r.scopes == nil {
+		r.scopes = make(map[string]ScopeDefinition)
+	}
+	r.scopes[name] = scope
+	r.scopesMu.Unlock()
+}
+
+func (r *repo[T]) SetScopeDefaults(defaults ScopeDefaults) error {
+	r.scopesMu.Lock()
+	defer r.scopesMu.Unlock()
+
+	if err := r.validateScopeDefaultsLocked(defaults); err != nil {
+		return err
+	}
+
+	r.scopeDefaults = CloneScopeDefaults(defaults)
+	return nil
+}
+
+func (r *repo[T]) GetScopeDefaults() ScopeDefaults {
+	r.scopesMu.RLock()
+	defer r.scopesMu.RUnlock()
+
+	return CloneScopeDefaults(r.scopeDefaults)
+}
+
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {
 	return r.GetTx(ctx, r.db, criteria...)
 }
@@ -186,6 +255,8 @@ func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error
 func (r *repo[T]) GetTx(ctx context.Context, tx bun.IDB, criteria ...SelectCriteria) (T, error) {
 	record := r.handlers.NewRecord()
 	q := tx.NewSelect().Model(record)
+
+	q = r.applySelectScopes(ctx, q)
 
 	for _, c := range criteria {
 		q.Apply(c)
@@ -221,6 +292,8 @@ func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrit
 	// if we apply again in criteria, we override
 	q.Limit(25).Offset(0)
 
+	q = r.applySelectScopes(ctx, q)
+
 	for _, c := range criteria {
 		q.Apply(c)
 	}
@@ -244,6 +317,8 @@ func (r *repo[T]) CountTx(ctx context.Context, tx bun.IDB, criteria ...SelectCri
 
 	q := tx.NewSelect().
 		Model(record)
+
+	q = r.applySelectScopes(ctx, q)
 
 	for _, c := range criteria {
 		q.Apply(c)
@@ -270,6 +345,8 @@ func (r *repo[T]) CreateTx(ctx context.Context, tx bun.IDB, record T, criteria .
 		r.handlers.SetID(record, newID)
 	}
 	q := tx.NewInsert().Model(record)
+
+	q = r.applyInsertScopes(ctx, q)
 
 	for _, c := range criteria {
 		q.Apply(c)
@@ -302,6 +379,8 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	}
 
 	q := tx.NewInsert().Model(&records)
+
+	q = r.applyInsertScopes(ctx, q)
 
 	for _, c := range criteria {
 		q.Apply(c)
@@ -359,7 +438,23 @@ func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, e
 		return existing, nil
 	}
 
-	return r.CreateTx(ctx, tx, record)
+	created, err := r.CreateTx(ctx, tx, record)
+	if err != nil {
+		if IsDuplicatedKey(err) {
+			existing, found, lookupErr := r.findExistingRecord(ctx, tx, record)
+			if lookupErr != nil {
+				var zero T
+				return zero, lookupErr
+			}
+			if found {
+				return existing, nil
+			}
+		}
+		var zero T
+		return zero, err
+	}
+
+	return created, nil
 }
 
 func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criteria ...SelectCriteria) (T, error) {
@@ -375,6 +470,8 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 	}
 	record := r.handlers.NewRecord()
 	q := tx.NewSelect().Model(record)
+
+	q = r.applySelectScopes(ctx, q)
 
 	for _, c := range criteria {
 		q.Apply(c)
@@ -394,12 +491,15 @@ func (r *repo[T]) Update(ctx context.Context, record T, criteria ...UpdateCriter
 
 func (r *repo[T]) UpdateTx(ctx context.Context, tx bun.IDB, record T, criteria ...UpdateCriteria) (T, error) {
 	q := tx.NewUpdate().Model(record)
+
+	q = r.applyUpdateScopes(ctx, q)
+
 	for _, c := range criteria {
 		q.Apply(c)
 	}
 	// TODO: WherePK will auto generate "ws"."id" = '44a3e9dc-0381-37a6-9652-99ea14057af5'
 	// so we can call it with model having the ID and we don't need criteria
-	res, err := q.OmitZero().WherePK().Returning("*").Exec(ctx)
+	res, err := q.WherePK().Returning("*").Exec(ctx)
 
 	if err != nil {
 		var zero T
@@ -424,12 +524,14 @@ func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	}
 
 	q := tx.NewUpdate().Model(&records).Bulk()
+
+	q = r.applyUpdateScopes(ctx, q)
+
 	for _, c := range criteria {
 		q.Apply(c)
 	}
 
 	_, err := q.
-		OmitZero().
 		WherePK().
 		Returning("*").
 		Exec(ctx)
@@ -533,6 +635,9 @@ func (r *repo[T]) Delete(ctx context.Context, record T) error {
 
 func (r *repo[T]) DeleteTx(ctx context.Context, tx bun.IDB, record T) error {
 	q := tx.NewDelete().Model(record).WherePK()
+
+	q = r.applyDeleteScopes(ctx, q)
+
 	_, err := q.Exec(ctx)
 	return r.mapError(err)
 }
@@ -552,6 +657,9 @@ func (r *repo[T]) DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) e
 func (r *repo[T]) DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error {
 	record := r.handlers.NewRecord()
 	q := tx.NewDelete().Model(record)
+
+	q = r.applyDeleteScopes(ctx, q)
+
 	for _, c := range criteria {
 		q.Apply(c)
 	}
@@ -565,6 +673,9 @@ func (r *repo[T]) ForceDelete(ctx context.Context, record T) error {
 
 func (r *repo[T]) ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error {
 	q := tx.NewDelete().Model(record).WherePK().ForceDelete()
+
+	q = r.applyDeleteScopes(ctx, q)
+
 	_, err := q.Exec(ctx)
 	return r.mapError(err)
 }
@@ -572,6 +683,105 @@ func (r *repo[T]) ForceDeleteTx(ctx context.Context, tx bun.IDB, record T) error
 func (r *repo[T]) TableName() string {
 	var model T
 	return r.db.NewCreateTable().Model(model).GetTableName()
+}
+
+func (r *repo[T]) applySelectScopes(ctx context.Context, q *bun.SelectQuery) *bun.SelectQuery {
+	for _, scope := range r.resolveSelectScopes(ctx) {
+		q = scope(q)
+	}
+	return q
+}
+
+func (r *repo[T]) applyUpdateScopes(ctx context.Context, q *bun.UpdateQuery) *bun.UpdateQuery {
+	for _, scope := range r.resolveUpdateScopes(ctx) {
+		q = scope(q)
+	}
+	return q
+}
+
+func (r *repo[T]) applyInsertScopes(ctx context.Context, q *bun.InsertQuery) *bun.InsertQuery {
+	for _, scope := range r.resolveInsertScopes(ctx) {
+		q = scope(q)
+	}
+	return q
+}
+
+func (r *repo[T]) applyDeleteScopes(ctx context.Context, q *bun.DeleteQuery) *bun.DeleteQuery {
+	for _, scope := range r.resolveDeleteScopes(ctx) {
+		q = scope(q)
+	}
+	return q
+}
+
+func (r *repo[T]) resolveSelectScopes(ctx context.Context) []SelectCriteria {
+	defs := r.resolveScopeDefinitions(ctx, ScopeOperationSelect)
+	var result []SelectCriteria
+	for _, def := range defs {
+		if def.Select == nil {
+			continue
+		}
+		result = append(result, def.Select(ctx)...)
+	}
+	return result
+}
+
+func (r *repo[T]) resolveUpdateScopes(ctx context.Context) []UpdateCriteria {
+	defs := r.resolveScopeDefinitions(ctx, ScopeOperationUpdate)
+	var result []UpdateCriteria
+	for _, def := range defs {
+		if def.Update == nil {
+			continue
+		}
+		result = append(result, def.Update(ctx)...)
+	}
+	return result
+}
+
+func (r *repo[T]) resolveInsertScopes(ctx context.Context) []InsertCriteria {
+	defs := r.resolveScopeDefinitions(ctx, ScopeOperationInsert)
+	var result []InsertCriteria
+	for _, def := range defs {
+		if def.Insert == nil {
+			continue
+		}
+		result = append(result, def.Insert(ctx)...)
+	}
+	return result
+}
+
+func (r *repo[T]) resolveDeleteScopes(ctx context.Context) []DeleteCriteria {
+	defs := r.resolveScopeDefinitions(ctx, ScopeOperationDelete)
+	var result []DeleteCriteria
+	for _, def := range defs {
+		if def.Delete == nil {
+			continue
+		}
+		result = append(result, def.Delete(ctx)...)
+	}
+	return result
+}
+
+func (r *repo[T]) resolveScopeDefinitions(ctx context.Context, op ScopeOperation) []ScopeDefinition {
+	r.scopesMu.RLock()
+	defaults := CloneScopeDefaults(r.scopeDefaults)
+	defsMap := make(map[string]ScopeDefinition, len(r.scopes))
+	maps.Copy(defsMap, r.scopes)
+	r.scopesMu.RUnlock()
+
+	state := ResolveScopeState(ctx, defaults, op)
+
+	defs := make([]ScopeDefinition, 0, len(state.Names))
+	for _, raw := range state.Names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if def, ok := defsMap[name]; ok {
+			defs = append(defs, def)
+		}
+	}
+
+	return defs
 }
 
 func DetectDriver(db *bun.DB) string {
@@ -642,6 +852,47 @@ func validateRepositoryConfig[T any](db *bun.DB, handlers ModelHandlers[T]) erro
 	}
 
 	return nil
+}
+
+func (r *repo[T]) validateScopeDefaultsLocked(defaults ScopeDefaults) error {
+	unknown := make(map[string]struct{})
+	check := func(names []string) {
+		for _, raw := range names {
+			name := strings.TrimSpace(raw)
+			if name == "" {
+				continue
+			}
+			if _, ok := r.scopes[name]; !ok {
+				unknown[name] = struct{}{}
+			}
+		}
+	}
+
+	check(defaults.All)
+	check(defaults.Select)
+	check(defaults.Update)
+	check(defaults.Insert)
+	check(defaults.Delete)
+
+	if len(unknown) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(unknown))
+	for name := range unknown {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fieldErrors := make([]errors.FieldError, 0, len(names))
+	for _, name := range names {
+		fieldErrors = append(fieldErrors, errors.FieldError{
+			Field:   "scopeDefaults",
+			Message: fmt.Sprintf("scope %q is not registered", name),
+		})
+	}
+
+	return errors.NewValidation("repository: scope defaults reference unknown scopes", fieldErrors...)
 }
 
 func isNilValue(v any) bool {

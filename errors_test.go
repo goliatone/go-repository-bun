@@ -40,12 +40,13 @@ func TestMapDatabaseError_AlreadyWrapped_ActualBehavior(t *testing.T) {
 
 func TestMapCommonDatabaseErrors(t *testing.T) {
 	tests := []struct {
-		name          string
-		inputError    error
-		expectedNil   bool
-		expectedCode  int
-		expectedText  string
-		expectedRetry bool
+		name             string
+		inputError       error
+		expectedNil      bool
+		expectedCode     int
+		expectedText     string
+		expectedRetry    bool
+		expectedCategory errors.Category
 	}{
 		{
 			name:          "sql.ErrNoRows",
@@ -62,16 +63,18 @@ func TestMapCommonDatabaseErrors(t *testing.T) {
 			expectedRetry: false,
 		},
 		{
-			name:          "sql.ErrConnDone",
-			inputError:    sql.ErrConnDone,
-			expectedText:  "CONNECTION_CLOSED",
-			expectedRetry: true,
+			name:             "sql.ErrConnDone",
+			inputError:       sql.ErrConnDone,
+			expectedText:     "CONNECTION_CLOSED",
+			expectedRetry:    true,
+			expectedCategory: CategoryDatabaseConnection,
 		},
 		{
-			name:          "connection refused error",
-			inputError:    fmt.Errorf("connection refused"),
-			expectedText:  "CONNECTION_REFUSED",
-			expectedRetry: true,
+			name:             "connection refused error",
+			inputError:       fmt.Errorf("connection refused"),
+			expectedText:     "CONNECTION_REFUSED",
+			expectedRetry:    true,
+			expectedCategory: CategoryDatabaseConnection,
 		},
 		{
 			name:          "timeout error",
@@ -107,6 +110,10 @@ func TestMapCommonDatabaseErrors(t *testing.T) {
 				assert.False(t, retryableErr.IsRetryable())
 			}
 
+			if tt.expectedCategory != "" {
+				assert.Truef(t, errors.IsCategory(result, tt.expectedCategory), "expected category %s", tt.expectedCategory)
+			}
+
 			if tt.expectedText != "" {
 				assert.Equal(t, tt.expectedText, retryableErr.BaseError.TextCode)
 			}
@@ -119,12 +126,13 @@ func TestMapCommonDatabaseErrors(t *testing.T) {
 
 func TestMapPostgresErrors(t *testing.T) {
 	tests := []struct {
-		name          string
-		pqError       *pq.Error
-		expectedCode  int
-		expectedText  string
-		expectedRetry bool
-		expectedMeta  map[string]any
+		name             string
+		pqError          *pq.Error
+		expectedCode     int
+		expectedText     string
+		expectedRetry    bool
+		expectedMeta     map[string]any
+		expectedCategory errors.Category
 	}{
 		{
 			name: "unique violation",
@@ -161,6 +169,16 @@ func TestMapPostgresErrors(t *testing.T) {
 			expectedText:  "DEADLOCK_DETECTED",
 			expectedRetry: true,
 		},
+		{
+			name: "connection error",
+			pqError: &pq.Error{
+				Code: "08000",
+			},
+			expectedText:     "CONNECTION_ERROR",
+			expectedRetry:    true,
+			expectedCategory: CategoryDatabaseConnection,
+			expectedCode:     502,
+		},
 	}
 
 	for _, tt := range tests {
@@ -186,6 +204,10 @@ func TestMapPostgresErrors(t *testing.T) {
 				for key, value := range tt.expectedMeta {
 					assert.Equal(t, value, retryableErr.BaseError.Metadata[key])
 				}
+			}
+
+			if tt.expectedCategory != "" {
+				assert.Truef(t, errors.IsCategory(result, tt.expectedCategory), "expected category %s", tt.expectedCategory)
 			}
 		})
 	}

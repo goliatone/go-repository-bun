@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -91,7 +92,7 @@ type Repository[T any] interface {
 
 	Handlers() ModelHandlers[T]
 	RegisterScope(name string, scope ScopeDefinition)
-	SetScopeDefaults(defaults ScopeDefaults)
+	SetScopeDefaults(defaults ScopeDefaults) error
 	GetScopeDefaults() ScopeDefaults
 }
 
@@ -228,10 +229,16 @@ func (r *repo[T]) RegisterScope(name string, scope ScopeDefinition) {
 	r.scopesMu.Unlock()
 }
 
-func (r *repo[T]) SetScopeDefaults(defaults ScopeDefaults) {
+func (r *repo[T]) SetScopeDefaults(defaults ScopeDefaults) error {
 	r.scopesMu.Lock()
+	defer r.scopesMu.Unlock()
+
+	if err := r.validateScopeDefaultsLocked(defaults); err != nil {
+		return err
+	}
+
 	r.scopeDefaults = CloneScopeDefaults(defaults)
-	r.scopesMu.Unlock()
+	return nil
 }
 
 func (r *repo[T]) GetScopeDefaults() ScopeDefaults {
@@ -845,6 +852,47 @@ func validateRepositoryConfig[T any](db *bun.DB, handlers ModelHandlers[T]) erro
 	}
 
 	return nil
+}
+
+func (r *repo[T]) validateScopeDefaultsLocked(defaults ScopeDefaults) error {
+	unknown := make(map[string]struct{})
+	check := func(names []string) {
+		for _, raw := range names {
+			name := strings.TrimSpace(raw)
+			if name == "" {
+				continue
+			}
+			if _, ok := r.scopes[name]; !ok {
+				unknown[name] = struct{}{}
+			}
+		}
+	}
+
+	check(defaults.All)
+	check(defaults.Select)
+	check(defaults.Update)
+	check(defaults.Insert)
+	check(defaults.Delete)
+
+	if len(unknown) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(unknown))
+	for name := range unknown {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fieldErrors := make([]errors.FieldError, 0, len(names))
+	for _, name := range names {
+		fieldErrors = append(fieldErrors, errors.FieldError{
+			Field:   "scopeDefaults",
+			Message: fmt.Sprintf("scope %q is not registered", name),
+		})
+	}
+
+	return errors.NewValidation("repository: scope defaults reference unknown scopes", fieldErrors...)
 }
 
 func isNilValue(v any) bool {

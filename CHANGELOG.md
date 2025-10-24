@@ -4,9 +4,36 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Validate scope names before adding ([f7b9b5a](https://github.com/goliatone/go-repository-bun/commit/f7b9b5a9b4de89a2e46cfd025bfcf0027a462136))  - (goliatone)
+- Skip zero values optional ([0113c51](https://github.com/goliatone/go-repository-bun/commit/0113c51b7736e012cc454375ae9396ce4f4af010))  - (goliatone)
+- Select edge cases ([f5db4d3](https://github.com/goliatone/go-repository-bun/commit/f5db4d3a8d2b178f0de29863d058ff2a66e595d8))  - (goliatone)
+- Ensure retryable errors are configured ok ([d1d2b55](https://github.com/goliatone/go-repository-bun/commit/d1d2b55b420b59f7d0cb4d7e32d50c03685140d0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- ScopeByField helper ([ca22a20](https://github.com/goliatone/go-repository-bun/commit/ca22a20021d86b5c1dc0f21c4a5bb8be47023a8c))  - (goliatone)
+- Scope feature ([28a33dc](https://github.com/goliatone/go-repository-bun/commit/28a33dc4ddb7eed36a038f6b4dffb996dd981e95))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#3](https://github.com/goliatone/go-repository-bun/pull/3): Add scopes ([78bc942](https://github.com/goliatone/go-repository-bun/commit/78bc942a4b943d4b67896330ae913e09176160a2))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([0107cd2](https://github.com/goliatone/go-repository-bun/commit/0107cd2b863dffeafc0e2007f02fab61da87c28f))  - (goliatone)
+- Update readme ([691801d](https://github.com/goliatone/go-repository-bun/commit/691801d1441ee6a14057844d8989d6ff054cbf29))  - (goliatone)
+
+# [0.6.0](https://github.com/goliatone/go-repository-bun/compare/v0.5.4...v0.6.0) - (2025-10-17)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Fields cache ([ad5f689](https://github.com/goliatone/go-repository-bun/commit/ad5f689f64aa8f832bd5f80a82ba6b32ac5a2d5c))  - (goliatone)
 - Cache invalidation for model fields ([0252766](https://github.com/goliatone/go-repository-bun/commit/0252766d778597157a7b8307a9903dde4801346f))  - (goliatone)
 - Select criteria for subqueries ([81792e7](https://github.com/goliatone/go-repository-bun/commit/81792e7e05bc172ba09de535e311196e45a479e8))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.6.0 ([4086e16](https://github.com/goliatone/go-repository-bun/commit/4086e165a3e304372bc57fd7210980d04cd9f000))  - (goliatone)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
 

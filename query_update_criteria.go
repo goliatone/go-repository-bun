@@ -98,3 +98,10 @@ func UpdateSetColumn(col string, val any) UpdateCriteria {
 		return q.SetColumn(col, "?", val)
 	}
 }
+
+// UpdateSkipZeroValues opt-in helper to omit zero-valued columns.
+func UpdateSkipZeroValues() UpdateCriteria {
+	return func(q *bun.UpdateQuery) *bun.UpdateQuery {
+		return q.OmitZero()
+	}
+}

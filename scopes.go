@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type scopeContextKey struct{}
@@ -270,4 +273,71 @@ func uniqueStrings(values []string) []string {
 		return nil
 	}
 	return result
+}
+
+// ScopeByField returns a ScopeDefinition that constrains repository operations to
+// records whose `field` matches the value stored under `scopeName` in the context.
+// Scope data may be provided as uuid.UUID, *uuid.UUID, or any fmt.Stringer/string
+// whose String() value is not blank.
+func ScopeByField(scopeName, field string) ScopeDefinition {
+	scopeName = strings.TrimSpace(scopeName)
+	field = strings.TrimSpace(field)
+	if scopeName == "" || field == "" {
+		return ScopeDefinition{}
+	}
+
+	valueFor := func(ctx context.Context) (string, bool) {
+		val, ok := ScopeData(ctx, scopeName)
+		if !ok {
+			return "", false
+		}
+
+		switch v := val.(type) {
+		case uuid.UUID:
+			if v == uuid.Nil {
+				return "", false
+			}
+			return v.String(), true
+		case *uuid.UUID:
+			if v == nil || *v == uuid.Nil {
+				return "", false
+			}
+			return v.String(), true
+		case fmt.Stringer:
+			s := strings.TrimSpace(v.String())
+			if s == "" {
+				return "", false
+			}
+			return s, true
+		case string:
+			s := strings.TrimSpace(v)
+			if s == "" {
+				return "", false
+			}
+			return s, true
+		default:
+			return "", false
+		}
+	}
+
+	return ScopeDefinition{
+		Select: func(ctx context.Context) []SelectCriteria {
+			if value, ok := valueFor(ctx); ok {
+				return []SelectCriteria{SelectBy(field, "=", value)}
+			}
+			return nil
+		},
+		Update: func(ctx context.Context) []UpdateCriteria {
+			if value, ok := valueFor(ctx); ok {
+				return []UpdateCriteria{UpdateBy(field, "=", value)}
+			}
+			return nil
+		},
+		Delete: func(ctx context.Context) []DeleteCriteria {
+			if value, ok := valueFor(ctx); ok {
+				return []DeleteCriteria{DeleteBy(field, "=", value)}
+			}
+			return nil
+		},
+	}
 }

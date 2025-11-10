@@ -34,3 +34,13 @@ func DeleteForReal() DeleteCriteria {
 		return q.ForceDelete()
 	}
 }
+
+// WithSoftDelete forces the query to only target rows that have already been
+// soft deleted (i.e. where deleted_at IS NOT NULL). This is especially useful
+// when combined with DeleteForReal to permanently remove records that were
+// previously soft deleted.
+func WithSoftDelete() DeleteCriteria {
+	return func(q *bun.DeleteQuery) *bun.DeleteQuery {
+		return q.Where("?TableAlias.deleted_at IS NOT NULL")
+	}
+}

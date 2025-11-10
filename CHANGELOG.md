@@ -2,6 +2,16 @@
 
 # [unreleased]
 
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([65823f4](https://github.com/goliatone/go-repository-bun/commit/65823f45ea8c12389b2d9993acd1d37886006551))  - (goliatone)
+
+# [0.8.0](https://github.com/goliatone/go-repository-bun/compare/v0.7.0...v0.8.0) - (2025-11-10)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.8.0 ([6cb4a62](https://github.com/goliatone/go-repository-bun/commit/6cb4a62c333182ec493b53d408daf00b50c59657))  - (goliatone)
+
 ## <!-- 16 -->➕ Add
 
 - ResolvIdentifier to support flexible column lookcup ([3d3580a](https://github.com/goliatone/go-repository-bun/commit/3d3580a7b5ce5e4d308e9ad7febfae7a87a535a7))  - (goliatone)

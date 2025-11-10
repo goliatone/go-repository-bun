@@ -23,7 +23,27 @@ modules:
       repo: goliatone/go-repository-bun
       release_artifact: ""
       dependents:
+        - repo: goliatone/go-auth
+          clone_url: https://github.com/goliatone/go-auth
+          module: github.com/goliatone/go-auth
+          module_path: .
+        - repo: goliatone/go-crud
+          clone_url: https://github.com/goliatone/go-crud
+          module: github.com/goliatone/go-crud
+          module_path: .
         - repo: goliatone/go-persistence-bun
           clone_url: https://github.com/goliatone/go-persistence-bun
           module: github.com/goliatone/go-persistence-bun
+          module_path: .
+        - repo: goliatone/go-repository-cache
+          clone_url: https://github.com/goliatone/go-repository-cache
+          module: github.com/goliatone/go-repository-cache
+          module_path: .
+        - repo: goliatone/mh
+          clone_url: https://github.com/goliatone/mh
+          module: github.com/goliatone/mh
+          module_path: .
+        - repo: goliatone/timeslice
+          clone_url: https://github.com/goliatone/timeslice
+          module: github.com/goliatone/timeslice
           module_path: .

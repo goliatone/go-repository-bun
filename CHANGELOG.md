@@ -2,12 +2,27 @@
 
 # [unreleased]
 
+## <!-- 16 -->➕ Add
+
+- ResolvIdentifier to support flexible column lookcup ([3d3580a](https://github.com/goliatone/go-repository-bun/commit/3d3580a7b5ce5e4d308e9ad7febfae7a87a535a7))  - (goliatone)
+- WithSoftDelete ([f1f9d99](https://github.com/goliatone/go-repository-bun/commit/f1f9d997f5764f2deb03b919398ca9c2cdfd7818))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([35beb3f](https://github.com/goliatone/go-repository-bun/commit/35beb3f7bb34b21a78076ee0ab8c3cac0e940166))  - (goliatone)
+
+# [0.7.0](https://github.com/goliatone/go-repository-bun/compare/v0.6.0...v0.7.0) - (2025-10-24)
+
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Validate scope names before adding ([f7b9b5a](https://github.com/goliatone/go-repository-bun/commit/f7b9b5a9b4de89a2e46cfd025bfcf0027a462136))  - (goliatone)
 - Skip zero values optional ([0113c51](https://github.com/goliatone/go-repository-bun/commit/0113c51b7736e012cc454375ae9396ce4f4af010))  - (goliatone)
 - Select edge cases ([f5db4d3](https://github.com/goliatone/go-repository-bun/commit/f5db4d3a8d2b178f0de29863d058ff2a66e595d8))  - (goliatone)
 - Ensure retryable errors are configured ok ([d1d2b55](https://github.com/goliatone/go-repository-bun/commit/d1d2b55b420b59f7d0cb4d7e32d50c03685140d0))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.7.0 ([c5c2257](https://github.com/goliatone/go-repository-bun/commit/c5c22573eacccd5109489314960a7536f38c3850))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 

@@ -77,11 +77,41 @@ handlers := repository.ModelHandlers[*User]{
         }
         return record.Email
     },
+    ResolveIdentifier: func(identifier string) []repository.IdentifierOption {
+        identifier = strings.TrimSpace(identifier)
+        if identifier == "" {
+            return nil
+        }
+
+        var lookups []repository.IdentifierOption
+
+        if strings.Contains(identifier, "@") {
+            lookups = append(lookups, repository.IdentifierOption{
+                Column: "email",
+                Value:  strings.ToLower(identifier),
+            })
+        }
+
+        if _, err := uuid.Parse(identifier); err == nil {
+            lookups = append(lookups, repository.IdentifierOption{
+                Column: "id",
+            })
+        }
+
+        // Always try username as a fallback.
+        lookups = append(lookups, repository.IdentifierOption{
+            Column: "username",
+        })
+
+        return lookups
+    },
 }
 
 // Create repository instance
 userRepo := repository.MustNewRepository[*User](db, handlers)
 ```
+
+`ResolveIdentifier` is optional. When provided, the repository will try each returned `IdentifierOption` (column/value pair) in order until a record is found. Returning `nil` or an empty slice falls back to the default `GetIdentifier`/`GetIdentifierValue` behaviour.
 
 ### Basic Operations
 

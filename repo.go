@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"maps"
 	"reflect"
@@ -127,6 +128,17 @@ type ModelHandlers[T any] struct {
 	// GetIdentifierValue returns the value for the identifier column.
 	// Return an empty string to indicate that the identifier is not available.
 	GetIdentifierValue func(T) string
+	// ResolveIdentifier allows callers to customize how identifiers are resolved.
+	// It can inspect the provided identifier and return one or more IdentifierOptions
+	// to try (e.g., try email, username, and id for flexible lookups). Returning nil
+	// or an empty slice falls back to GetIdentifier/GetIdentifierValue.
+	ResolveIdentifier func(identifier string) []IdentifierOption
+}
+
+// IdentifierOption describes a single identifier lookup attempt.
+type IdentifierOption struct {
+	Column string
+	Value  string
 }
 
 func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
@@ -461,28 +473,83 @@ func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criter
 	return r.GetByIdentifierTx(ctx, r.db, identifier, criteria...)
 }
 
-func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error) {
-	column := "id"
-	if r.handlers.GetIdentifier != nil {
-		if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
-			column = col
+func (r *repo[T]) resolveIdentifierOptions(identifier string) []IdentifierOption {
+	trimmed := strings.TrimSpace(identifier)
+	var options []IdentifierOption
+
+	if r.handlers.ResolveIdentifier != nil {
+		for _, opt := range r.handlers.ResolveIdentifier(identifier) {
+			column := strings.TrimSpace(opt.Column)
+			if column == "" {
+				continue
+			}
+
+			value := strings.TrimSpace(opt.Value)
+			if value == "" {
+				value = trimmed
+			}
+			if value == "" {
+				continue
+			}
+
+			options = append(options, IdentifierOption{
+				Column: column,
+				Value:  value,
+			})
 		}
 	}
-	record := r.handlers.NewRecord()
-	q := tx.NewSelect().Model(record)
 
-	q = r.applySelectScopes(ctx, q)
+	if len(options) == 0 {
+		column := "id"
+		if r.handlers.GetIdentifier != nil {
+			if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
+				column = col
+			}
+		}
 
-	for _, c := range criteria {
-		q.Apply(c)
+		options = append(options, IdentifierOption{
+			Column: column,
+			Value:  trimmed,
+		})
 	}
 
-	q = q.Where(fmt.Sprintf("?TableAlias.%s = ?", column), identifier).Limit(1)
-	if err := q.Scan(ctx); err != nil {
-		var zero T
-		return zero, r.mapError(err)
+	return options
+}
+
+func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error) {
+	var zero T
+	var lastErr error
+
+	options := r.resolveIdentifierOptions(identifier)
+
+	for _, opt := range options {
+		record := r.handlers.NewRecord()
+
+		q := tx.NewSelect().Model(record)
+		q = r.applySelectScopes(ctx, q)
+
+		for _, c := range criteria {
+			q.Apply(c)
+		}
+
+		q = q.Where(fmt.Sprintf("?TableAlias.%s = ?", opt.Column), opt.Value).Limit(1)
+
+		if err := q.Scan(ctx); err != nil {
+			if IsRecordNotFound(err) {
+				lastErr = err
+				continue
+			}
+			return zero, r.mapError(err)
+		}
+
+		return record, nil
 	}
-	return record, nil
+
+	if lastErr == nil {
+		lastErr = sql.ErrNoRows
+	}
+
+	return zero, r.mapError(lastErr)
 }
 
 func (r *repo[T]) Update(ctx context.Context, record T, criteria ...UpdateCriteria) (T, error) {

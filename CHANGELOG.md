@@ -2,6 +2,16 @@
 
 # [unreleased]
 
+## <!-- 16 -->➕ Add
+
+- JSON query helpers ([ccc4e9a](https://github.com/goliatone/go-repository-bun/commit/ccc4e9a80f22ca788bdbfeb242a8061ac6d59061))  - (goliatone)
+
+# [0.9.0](https://github.com/goliatone/go-repository-bun/compare/v0.8.0...v0.9.0) - (2025-11-10)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.9.0 ([7701774](https://github.com/goliatone/go-repository-bun/commit/770177479d92cd8069a0764977f2c074a4cf707c))  - (goliatone)
+
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
 
 - Update readme ([65823f4](https://github.com/goliatone/go-repository-bun/commit/65823f45ea8c12389b2d9993acd1d37886006551))  - (goliatone)

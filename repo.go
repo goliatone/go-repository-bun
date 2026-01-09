@@ -378,6 +378,7 @@ func (r *repo[T]) CreateMany(ctx context.Context, records []T, criteria ...Inser
 }
 
 func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...InsertCriteria) ([]T, error) {
+	reorderByID, insertCriteria := splitInsertCriteriaForReturnOrder(criteria)
 	if len(records) == 0 {
 		return nil, nil
 	}
@@ -390,11 +391,19 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 		}
 	}
 
+	var order []uuid.UUID
+	if reorderByID {
+		order = make([]uuid.UUID, len(records))
+		for i, record := range records {
+			order[i] = r.handlers.GetID(record)
+		}
+	}
+
 	q := tx.NewInsert().Model(&records)
 
 	q = r.applyInsertScopes(ctx, q)
 
-	for _, c := range criteria {
+	for _, c := range insertCriteria {
 		q.Apply(c)
 	}
 
@@ -402,7 +411,115 @@ func (r *repo[T]) CreateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	if err != nil {
 		return records, r.mapError(fmt.Errorf("create many error: %w", err))
 	}
+	if reorderByID {
+		if reordered, ok := reorderRecordsByID(records, order, r.handlers.GetID); ok {
+			return reordered, nil
+		}
+	}
 	return records, nil
+}
+
+func splitInsertCriteriaForReturnOrder(criteria []InsertCriteria) (bool, []InsertCriteria) {
+	if len(criteria) == 0 {
+		return false, criteria
+	}
+
+	markerPtr := reflect.ValueOf(insertReturnOrderByIDMarker).Pointer()
+	filtered := make([]InsertCriteria, 0, len(criteria))
+	reorder := false
+
+	for _, c := range criteria {
+		if c == nil {
+			filtered = append(filtered, c)
+			continue
+		}
+		if reflect.ValueOf(c).Pointer() == markerPtr {
+			reorder = true
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+
+	if !reorder {
+		return false, criteria
+	}
+	return true, filtered
+}
+
+func reorderRecordsByID[T any](records []T, order []uuid.UUID, getID func(T) uuid.UUID) ([]T, bool) {
+	if len(records) == 0 {
+		return records, true
+	}
+	if getID == nil {
+		return records, false
+	}
+	if len(order) != len(records) {
+		return records, false
+	}
+
+	indexes := make(map[uuid.UUID]int, len(order))
+	for i, id := range order {
+		if id == uuid.Nil {
+			return records, false
+		}
+		if _, exists := indexes[id]; exists {
+			return records, false
+		}
+		indexes[id] = i
+	}
+
+	reordered := make([]T, len(records))
+	filled := make([]bool, len(records))
+	for _, record := range records {
+		id := getID(record)
+		if id == uuid.Nil {
+			return records, false
+		}
+		idx, ok := indexes[id]
+		if !ok {
+			return records, false
+		}
+		if filled[idx] {
+			return records, false
+		}
+		reordered[idx] = record
+		filled[idx] = true
+	}
+
+	for _, ok := range filled {
+		if !ok {
+			return records, false
+		}
+	}
+
+	return reordered, true
+}
+
+func splitUpdateCriteriaForReturnOrder(criteria []UpdateCriteria) (bool, []UpdateCriteria) {
+	if len(criteria) == 0 {
+		return false, criteria
+	}
+
+	markerPtr := reflect.ValueOf(updateReturnOrderByIDMarker).Pointer()
+	filtered := make([]UpdateCriteria, 0, len(criteria))
+	reorder := false
+
+	for _, c := range criteria {
+		if c == nil {
+			filtered = append(filtered, c)
+			continue
+		}
+		if reflect.ValueOf(c).Pointer() == markerPtr {
+			reorder = true
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+
+	if !reorder {
+		return false, criteria
+	}
+	return true, filtered
 }
 
 func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
@@ -586,15 +703,24 @@ func (r *repo[T]) UpdateMany(ctx context.Context, records []T, criteria ...Updat
 }
 
 func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, criteria ...UpdateCriteria) ([]T, error) {
+	reorderByID, updateCriteria := splitUpdateCriteriaForReturnOrder(criteria)
 	if len(records) == 0 {
 		return nil, nil
+	}
+
+	var order []uuid.UUID
+	if reorderByID {
+		order = make([]uuid.UUID, len(records))
+		for i, record := range records {
+			order[i] = r.handlers.GetID(record)
+		}
 	}
 
 	q := tx.NewUpdate().Model(&records).Bulk()
 
 	q = r.applyUpdateScopes(ctx, q)
 
-	for _, c := range criteria {
+	for _, c := range updateCriteria {
 		q.Apply(c)
 	}
 
@@ -606,6 +732,12 @@ func (r *repo[T]) UpdateManyTx(ctx context.Context, tx bun.IDB, records []T, cri
 	if err != nil {
 		var zero []T
 		return zero, r.mapError(err)
+	}
+
+	if reorderByID {
+		if reordered, ok := reorderRecordsByID(records, order, r.handlers.GetID); ok {
+			return reordered, nil
+		}
 	}
 
 	return records, nil

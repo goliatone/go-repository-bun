@@ -105,3 +105,12 @@ func UpdateSkipZeroValues() UpdateCriteria {
 		return q.OmitZero()
 	}
 }
+
+var updateReturnOrderByIDMarker UpdateCriteria = func(uq *bun.UpdateQuery) *bun.UpdateQuery {
+	return uq
+}
+
+// UpdateReturnOrderByID requests that bulk update results are reordered to match input IDs.
+func UpdateReturnOrderByID() UpdateCriteria {
+	return updateReturnOrderByIDMarker
+}

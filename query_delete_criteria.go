@@ -12,6 +12,22 @@ func DeleteByID(id string) DeleteCriteria {
 	return DeleteBy("id", "=", id)
 }
 
+// DeleteByIDs deletes by a list of IDs.
+func DeleteByIDs(ids []string) DeleteCriteria {
+	return DeleteColumnIn("id", ids)
+}
+
+// DeleteColumnIn deletes by matching any of the provided values.
+// An empty slice results in a no-op filter that matches nothing.
+func DeleteColumnIn[T any](column string, values []T) DeleteCriteria {
+	return func(q *bun.DeleteQuery) *bun.DeleteQuery {
+		if len(values) == 0 {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.In(values))
+	}
+}
+
 // DeleteBy will delete by a given property
 func DeleteBy(column, operator, value string) DeleteCriteria {
 	return func(q *bun.DeleteQuery) *bun.DeleteQuery {

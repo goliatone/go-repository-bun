@@ -4,6 +4,23 @@
 
 ## <!-- 16 -->➕ Add
 
+- Update return order by id ([f12b29e](https://github.com/goliatone/go-repository-bun/commit/f12b29e55480a5549e9b0e1a27b86909961337d4))  - (goliatone)
+- Insert return order by id ([761f324](https://github.com/goliatone/go-repository-bun/commit/761f32425ae0ad56b2a84e8c8fb2aeb19d50012d))  - (goliatone)
+- Delete criteria helpers for delete columsn ([4010e42](https://github.com/goliatone/go-repository-bun/commit/4010e425d1d5e36da4609400964f9e800c941807))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([5502a63](https://github.com/goliatone/go-repository-bun/commit/5502a63db935357de9746d92361e4faeaa4875f1))  - (goliatone)
+- Update tests ([7d713c0](https://github.com/goliatone/go-repository-bun/commit/7d713c0e016cd4c7d46084c38f929075dfba0c0a))  - (goliatone)
+
+# [0.10.0](https://github.com/goliatone/go-repository-bun/compare/v0.9.0...v0.10.0) - (2025-12-10)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.10.0 ([2a799bb](https://github.com/goliatone/go-repository-bun/commit/2a799bb5bb09357c875a761196b8f0c02e9b750b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - JSON query helpers ([ccc4e9a](https://github.com/goliatone/go-repository-bun/commit/ccc4e9a80f22ca788bdbfeb242a8061ac6d59061))  - (goliatone)
 
 # [0.9.0](https://github.com/goliatone/go-repository-bun/compare/v0.8.0...v0.9.0) - (2025-11-10)

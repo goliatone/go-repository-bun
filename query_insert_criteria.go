@@ -25,3 +25,12 @@ func InsertOnConflictUpdate(cols ...string) InsertCriteria {
 		return iq.On(fmt.Sprintf("CONFLICT (%s) DO UPDATE", strings.Join(cols, ",")))
 	}
 }
+
+var insertReturnOrderByIDMarker InsertCriteria = func(iq *bun.InsertQuery) *bun.InsertQuery {
+	return iq
+}
+
+// InsertReturnOrderByID requests that bulk create results are reordered to match input IDs.
+func InsertReturnOrderByID() InsertCriteria {
+	return insertReturnOrderByIDMarker
+}

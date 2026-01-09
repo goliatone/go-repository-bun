@@ -150,6 +150,10 @@ created, err := userRepo.CreateMany(ctx, users)
 // Update multiple records
 updated, err := userRepo.UpdateMany(ctx, users)
 
+// Optional: reorder returned records to match input IDs
+created, err = userRepo.CreateMany(ctx, users, repository.InsertReturnOrderByID())
+updated, err = userRepo.UpdateMany(ctx, users, repository.UpdateReturnOrderByID())
+
 // Upsert multiple records
 upserted, err := userRepo.UpsertMany(ctx, users)
 ```
@@ -250,6 +254,9 @@ err := userRepo.DeleteWhere(ctx,
     repository.DeleteBy("status", "=", "inactive"),
     repository.DeleteByTimetz("created_at", "<", time.Now().Add(-365*24*time.Hour)),
 )
+
+// Delete by ID list
+err = userRepo.DeleteWhere(ctx, repository.DeleteByIDs([]string{"id-1", "id-2"}))
 ```
 
 ### Transactions

@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -16,6 +18,24 @@ type QueryHookKeyer interface {
 	QueryHookKey() string
 }
 
+// QueryHookErrorHandler handles invalid query hook registrations.
+type QueryHookErrorHandler func(db *bun.DB, hook bun.QueryHook, err error)
+
+var (
+	ErrQueryHookNil        = errors.New("query hook is nil")
+	ErrQueryHookNilPointer = errors.New("query hook is a nil pointer")
+)
+
+// LogQueryHookErrorHandler logs invalid hook registrations.
+func LogQueryHookErrorHandler(db *bun.DB, hook bun.QueryHook, err error) {
+	log.Printf("repository: query hook skipped: %v (type=%T)", err, hook)
+}
+
+// PanicQueryHookErrorHandler panics on invalid hook registrations.
+func PanicQueryHookErrorHandler(db *bun.DB, hook bun.QueryHook, err error) {
+	panic(fmt.Sprintf("repository: query hook error: %v (type=%T)", err, hook))
+}
+
 // WithQueryHooks registers query hooks on the provided bun.DB, skipping duplicates.
 func WithQueryHooks(hooks ...bun.QueryHook) Option {
 	return func(db *bun.DB) {
@@ -23,9 +43,17 @@ func WithQueryHooks(hooks ...bun.QueryHook) Option {
 	}
 }
 
+// WithQueryHookErrorHandler sets how invalid hooks are handled for the provided bun.DB.
+func WithQueryHookErrorHandler(handler QueryHookErrorHandler) Option {
+	return func(db *bun.DB) {
+		setQueryHookErrorHandler(db, handler)
+	}
+}
+
 type hookRegistryEntry struct {
-	mu   sync.Mutex
-	keys map[string]struct{}
+	mu      sync.Mutex
+	keys    map[string]struct{}
+	handler QueryHookErrorHandler
 }
 
 var hookRegistry sync.Map
@@ -40,16 +68,32 @@ func registerQueryHooks(db *bun.DB, hooks ...bun.QueryHook) {
 		return
 	}
 
-	localKeys := make(map[string]struct{}, len(hooks))
+	entry.mu.Lock()
+	handler := entry.handler
+	entry.mu.Unlock()
+	if handler == nil {
+		handler = LogQueryHookErrorHandler
+	}
+
+	validHooks := make([]bun.QueryHook, 0, len(hooks))
+	for _, hook := range hooks {
+		if err := validateQueryHook(hook); err != nil {
+			handler(db, hook, err)
+			continue
+		}
+		validHooks = append(validHooks, hook)
+	}
+
+	if len(validHooks) == 0 {
+		return
+	}
+
+	localKeys := make(map[string]struct{}, len(validHooks))
 
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 
-	for _, hook := range hooks {
-		if hook == nil {
-			continue
-		}
-
+	for _, hook := range validHooks {
 		if key, ok := queryHookKey(hook); ok {
 			if _, seen := localKeys[key]; seen {
 				continue
@@ -75,10 +119,45 @@ func getHookRegistryEntry(db *bun.DB) *hookRegistryEntry {
 	}
 
 	entry := &hookRegistryEntry{
-		keys: make(map[string]struct{}),
+		keys:    make(map[string]struct{}),
+		handler: LogQueryHookErrorHandler,
 	}
 	actual, _ := hookRegistry.LoadOrStore(db, entry)
 	return actual.(*hookRegistryEntry)
+}
+
+func setQueryHookErrorHandler(db *bun.DB, handler QueryHookErrorHandler) {
+	if db == nil {
+		return
+	}
+
+	entry := getHookRegistryEntry(db)
+	if entry == nil {
+		return
+	}
+
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	if handler == nil {
+		entry.handler = LogQueryHookErrorHandler
+		return
+	}
+
+	entry.handler = handler
+}
+
+func validateQueryHook(hook bun.QueryHook) error {
+	if hook == nil {
+		return ErrQueryHookNil
+	}
+
+	value := reflect.ValueOf(hook)
+	if value.Kind() == reflect.Ptr && value.IsNil() {
+		return ErrQueryHookNilPointer
+	}
+
+	return nil
 }
 
 func queryHookKey(hook bun.QueryHook) (string, bool) {

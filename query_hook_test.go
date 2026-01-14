@@ -54,3 +54,25 @@ func TestWithQueryHooksRegistersOnce(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&hook.before))
 	assert.Equal(t, int32(1), atomic.LoadInt32(&hook.after))
 }
+
+func TestWithQueryHookErrorHandlerPanicsOnNilHook(t *testing.T) {
+	sqldb, err := sql.Open("sqlite3", ":memory:")
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	t.Cleanup(func() {
+		_ = sqldb.Close()
+	})
+
+	bunDB := bun.NewDB(sqldb, sqlitedialect.New())
+
+	var hook *countHook
+	assert.Panics(t, func() {
+		_ = newTestUserRepository(
+			bunDB,
+			WithQueryHookErrorHandler(PanicQueryHookErrorHandler),
+			WithQueryHooks(hook),
+		)
+	})
+}

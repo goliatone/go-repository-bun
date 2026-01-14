@@ -58,7 +58,7 @@ func newTestUserRepository(db *bun.DB, opts ...Option) Repository[*TestUser] {
 			return record.Email
 		},
 	}
-	return MustNewRepository[*TestUser](db, handlers, opts...)
+	return MustNewRepositoryWithOptions[*TestUser](db, handlers, opts...)
 }
 
 func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {

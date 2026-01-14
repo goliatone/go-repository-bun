@@ -12,6 +12,11 @@ type TransactionManager interface {
 	RunInTx(ctx context.Context, opts *sql.TxOptions, f func(ctx context.Context, tx bun.Tx) error) error
 }
 
+// DBProvider exposes access to the underlying bun.DB when needed.
+type DBProvider interface {
+	DB() *bun.DB
+}
+
 type SQLExecuter interface {
 }
 

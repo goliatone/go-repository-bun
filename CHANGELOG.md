@@ -4,6 +4,24 @@
 
 ## <!-- 16 -->➕ Add
 
+- New constructor for taking otpions ([b799f17](https://github.com/goliatone/go-repository-bun/commit/b799f17dfe91cdfb7b8f960c98f2984902a38f93))  - (goliatone)
+- Options to configure nil hooks handler ([003b84d](https://github.com/goliatone/go-repository-bun/commit/003b84dd6138cc3c5470213c8deba0cba4b37071))  - (goliatone)
+- Options for hooks ([e512d83](https://github.com/goliatone/go-repository-bun/commit/e512d833df4a91efca45968636223a3a24bb86a8))  - (goliatone)
+- DBProvider interface ([e973735](https://github.com/goliatone/go-repository-bun/commit/e9737351af6ba840b256eb342f3efb46e8240b81))  - (goliatone)
+- Repository hooks for debug ([a4d58f5](https://github.com/goliatone/go-repository-bun/commit/a4d58f5f95bcf4d2f535e801552e976a696df1d5))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([f7e3a8e](https://github.com/goliatone/go-repository-bun/commit/f7e3a8e22a447b7a75e9acadad581e6445e4cff1))  - (goliatone)
+
+# [0.11.0](https://github.com/goliatone/go-repository-bun/compare/v0.10.0...v0.11.0) - (2026-01-09)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.11.0 ([9068866](https://github.com/goliatone/go-repository-bun/commit/9068866d90c474637729d7c3ab62c2d49e80368a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Update return order by id ([f12b29e](https://github.com/goliatone/go-repository-bun/commit/f12b29e55480a5549e9b0e1a27b86909961337d4))  - (goliatone)
 - Insert return order by id ([761f324](https://github.com/goliatone/go-repository-bun/commit/761f32425ae0ad56b2a84e8c8fb2aeb19d50012d))  - (goliatone)
 - Delete criteria helpers for delete columsn ([4010e42](https://github.com/goliatone/go-repository-bun/commit/4010e425d1d5e36da4609400964f9e800c941807))  - (goliatone)

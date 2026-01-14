@@ -141,7 +141,14 @@ type IdentifierOption struct {
 	Value  string
 }
 
-func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
+func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt(db)
+	}
+
 	return &repo[T]{
 		db:       db,
 		handlers: handlers,
@@ -149,12 +156,12 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	}
 }
 
-func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
+func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
 	if err := validateRepositoryConfig(db, handlers); err != nil {
 		panic(err)
 	}
 
-	return NewRepository(db, handlers)
+	return NewRepository(db, handlers, opts...)
 }
 
 func (r *repo[T]) Validate() error {
@@ -225,6 +232,10 @@ func (r *repo[T]) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any
 
 func (r *repo[T]) Handlers() ModelHandlers[T] {
 	return r.handlers
+}
+
+func (r *repo[T]) DB() *bun.DB {
+	return r.db
 }
 
 func (r *repo[T]) RegisterScope(name string, scope ScopeDefinition) {

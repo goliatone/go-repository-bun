@@ -141,7 +141,11 @@ type IdentifierOption struct {
 	Value  string
 }
 
-func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
+func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
+	return NewRepositoryWithOptions(db, handlers)
+}
+
+func NewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -156,12 +160,20 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option)
 	}
 }
 
-func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
+func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	if err := validateRepositoryConfig(db, handlers); err != nil {
 		panic(err)
 	}
 
-	return NewRepository(db, handlers, opts...)
+	return NewRepository(db, handlers)
+}
+
+func MustNewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
+	if err := validateRepositoryConfig(db, handlers); err != nil {
+		panic(err)
+	}
+
+	return NewRepositoryWithOptions(db, handlers, opts...)
 }
 
 func (r *repo[T]) Validate() error {

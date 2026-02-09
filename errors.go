@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	stderrors "errors"
 	"regexp"
 	"strings"
 	"time"
@@ -163,9 +164,7 @@ func MapPostgresErrors(err error) error {
 func MapCommonDatabaseErrors(err error) error {
 	switch {
 	case err == sql.ErrNoRows:
-		return errors.NewNonRetryable("Record not found", CategoryDatabaseNotFound).
-			WithCode(errors.CodeNotFound).
-			WithTextCode("RECORD_NOT_FOUND")
+		return newRecordNotFoundErrorWithSource(err)
 	case err == sql.ErrTxDone:
 		return errors.NewNonRetryable("Transaction has already been committed or rolled back", CategoryDatabase).
 			WithCode(errors.CodeBadRequest).
@@ -309,7 +308,19 @@ func IsRetryableDatabase(err error) bool {
 }
 
 func NewRecordNotFound() *errors.RetryableError {
-	return errors.NewNonRetryable("Record not found", CategoryDatabaseNotFound).
+	return newRecordNotFoundErrorWithSource(nil)
+}
+
+func newRecordNotFoundErrorWithSource(source error) *errors.RetryableError {
+	notFoundErr := errors.NewNonRetryable("Record not found", CategoryDatabaseNotFound).
 		WithCode(errors.CodeNotFound).
 		WithTextCode("RECORD_NOT_FOUND")
+
+	if source == nil {
+		notFoundErr.BaseError.Source = ErrRecordNotFound
+		return notFoundErr
+	}
+
+	notFoundErr.BaseError.Source = stderrors.Join(ErrRecordNotFound, source)
+	return notFoundErr
 }

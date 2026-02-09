@@ -12,6 +12,7 @@ A generic implementation of a data access layer using Go generics and [Bun ORM](
 - Raw query execution
 - Bulk operations (`CreateMany`, `UpdateMany`, `UpsertMany`)
 - `GetOrCreate` and `Upsert` convenience methods
+- Map-native struct/map projection and patch helpers (no JSON roundtrip)
 - Multi-database support (PostgreSQL, SQLite, MSSQL, MySQL)
 - Sophisticated error handling with categorized errors
 - Model metadata extraction and field introspection
@@ -314,6 +315,65 @@ if err != nil {
 }
 ```
 
+### Map Native Helpers
+
+Use map-native helpers when integrating generic admin adapters that exchange `map[string]any`.
+
+```go
+mapper := repository.NewMapRecordMapper[*User](repository.MapRecordMapperConfig{
+    ProjectionOptions: []repository.MapProjectionOption{
+        repository.WithProjectionKeyMode(repository.MapKeyBun), // default
+    },
+    PatchOptions: []repository.MapPatchOption{
+        repository.WithPatchKeyMode(repository.MapKeyBun), // default
+        repository.WithPatchAllowedFields("name", "email", "updated_at"),
+    },
+})
+
+payload := map[string]any{
+    "name": "Updated Name",
+}
+
+record, err := mapper.ToRecord(payload)
+asMap, err := mapper.ToMap(record)
+patched, columns, err := mapper.ApplyPatch(record, payload)
+_ = columns // Bun column names changed by the patch
+```
+
+ID based safe partial update flow:
+
+```go
+updated, err := repository.UpdateByIDWithMapPatch(
+    ctx,
+    userRepo,
+    userID,
+    map[string]any{"name": "Updated Name"},
+    nil, // optional update criteria
+    repository.WithPatchAllowedFields("name"),
+)
+```
+
+Direct query update criteria from a map payload:
+
+```go
+criteria, err := repository.UpdateCriteriaForMapPatch(
+    map[string]any{"name": "Updated Name"},
+    repository.WithPatchAllowedFields("name"),
+)
+if err != nil {
+    return err
+}
+// criteria includes UpdateColumns("name") + UpdateSetColumn("name", ...)
+```
+
+"Not found" checks support both helper and sentinel:
+
+```go
+if repository.IsRecordNotFound(err) || errors.Is(err, repository.ErrRecordNotFound) {
+    // handle not found
+}
+```
+
 ## Advanced Features
 
 ### Model Metadata
@@ -331,7 +391,7 @@ for _, field := range fields {
 meta := repository.GenerateModelMeta(&User{})
 fmt.Printf("Table: %s\n", meta.TableName)
 for _, field := range meta.Fields {
-    fmt.Printf("Field: %s, Required: %v, Unique: %v\n", 
+    fmt.Printf("Field: %s, Required: %v, Unique: %v\n",
         field.Name, field.IsRequired, field.IsUnique)
 }
 ```
@@ -342,7 +402,7 @@ The package includes a `TransactionManager` interface for managing database tran
 
 ```go
 type TransactionManager interface {
-    RunInTx(ctx context.Context, opts *sql.TxOptions, 
+    RunInTx(ctx context.Context, opts *sql.TxOptions,
         f func(ctx context.Context, tx bun.Tx) error) error
 }
 ```
@@ -350,6 +410,7 @@ type TransactionManager interface {
 ## Database Support
 
 The repository automatically detects and adapts to different database drivers:
+
 - PostgreSQL
 - SQLite
 - MSSQL

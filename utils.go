@@ -2,12 +2,16 @@ package repository
 
 import (
 	"database/sql"
+	stderrors "errors"
 
 	"fmt"
 
 	"github.com/goliatone/go-errors"
 	"github.com/google/uuid"
 )
+
+// ErrRecordNotFound is a sentinel error that enables errors.Is(err, ErrRecordNotFound) checks.
+var ErrRecordNotFound = stderrors.New("repository: record not found")
 
 func SQLExpectedCount(res sql.Result, expected int64) error {
 	total, err := res.RowsAffected()
@@ -37,6 +41,10 @@ func IsSQLExpectedCountViolation(err error) bool {
 func IsRecordNotFound(err error) bool {
 	if err == nil {
 		return false
+	}
+
+	if stderrors.Is(err, ErrRecordNotFound) {
+		return true
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {

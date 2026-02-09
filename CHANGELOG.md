@@ -4,6 +4,22 @@
 
 ## <!-- 16 -->➕ Add
 
+- Map error helper ([b3282ce](https://github.com/goliatone/go-repository-bun/commit/b3282ce7fe3129623f7038c47db9f17f08b01091))  - (goliatone)
+- Map helpers ([862cdd0](https://github.com/goliatone/go-repository-bun/commit/862cdd0dab8ab6e8b667b691ef036abd1210a2f5))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([898c78c](https://github.com/goliatone/go-repository-bun/commit/898c78c7ceda8ae1dd3386d0980464e9fa317c68))  - (goliatone)
+- Update readme ([f9e6d51](https://github.com/goliatone/go-repository-bun/commit/f9e6d518ce037d46ef32b8be25c2a60dd6beacef))  - (goliatone)
+
+# [0.12.0](https://github.com/goliatone/go-repository-bun/compare/v0.11.0...v0.12.0) - (2026-01-14)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.12.0 ([3c89bd7](https://github.com/goliatone/go-repository-bun/commit/3c89bd7574a462c477d930d3c106fc436df1956a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - New constructor for taking otpions ([b799f17](https://github.com/goliatone/go-repository-bun/commit/b799f17dfe91cdfb7b8f960c98f2984902a38f93))  - (goliatone)
 - Options to configure nil hooks handler ([003b84d](https://github.com/goliatone/go-repository-bun/commit/003b84dd6138cc3c5470213c8deba0cba4b37071))  - (goliatone)
 - Options for hooks ([e512d83](https://github.com/goliatone/go-repository-bun/commit/e512d833df4a91efca45968636223a3a24bb86a8))  - (goliatone)

@@ -13,6 +13,28 @@ import (
 
 type Option func(*bun.DB)
 
+type RepoOption func(*repoConfig)
+
+type repoConfig struct {
+	defaultListPaginationConfigured bool
+	defaultListLimit                int
+	defaultListOffset               int
+}
+
+// WithDefaultListPagination configures repository-level default pagination.
+// Use this during repository initialization.
+func WithDefaultListPagination(limit, offset int) RepoOption {
+	return func(cfg *repoConfig) {
+		if cfg == nil {
+			return
+		}
+
+		cfg.defaultListPaginationConfigured = true
+		cfg.defaultListLimit = limit
+		cfg.defaultListOffset = offset
+	}
+}
+
 // QueryHookKeyer allows hooks to provide a stable identity for deduplication.
 type QueryHookKeyer interface {
 	QueryHookKey() string

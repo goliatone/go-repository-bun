@@ -1022,7 +1022,7 @@ func TestRepository_List(t *testing.T) {
 
 	users, total, err := userRepo.List(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, 30, len(users), "Should return all users when no pagination criteria is provided")
+	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 users")
 	assert.Equal(t, 30, total, "Total should reflect all records")
 
 	// Test List with custom limit and offset
@@ -1084,7 +1084,7 @@ func TestRepository_ListTx(t *testing.T) {
 
 	users, total, err := userRepo.ListTx(ctx, tx)
 	assert.NoError(t, err)
-	assert.Equal(t, 35, len(users), "Should return all users in tx when no pagination criteria is provided")
+	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 users in tx")
 	assert.Equal(t, 35, total, "Total should include records in transaction")
 
 	err = tx.Commit()
@@ -1093,8 +1093,43 @@ func TestRepository_ListTx(t *testing.T) {
 	// Verify that the new records are persisted
 	users, total, err = userRepo.List(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, 35, len(users), "Should return all persisted users when no pagination criteria is provided")
+	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 persisted users")
 	assert.Equal(t, 35, total, "Total should reflect all records")
+}
+
+func TestRepository_List_WithConfigNoDefaultPagination(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithConfig(db, nil)
+
+	now := time.Now()
+	for i := 1; i <= 30; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	users, total, err := userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 30, len(users), "With config constructor and no repo defaults, list should return all users")
+	assert.Equal(t, 30, total, "Total should reflect all records")
+
+	tx, err := db.BeginTx(ctx, nil)
+	assert.NoError(t, err)
+	defer tx.Rollback()
+
+	users, total, err = userRepo.ListTx(ctx, tx)
+	assert.NoError(t, err)
+	assert.Equal(t, 30, len(users), "With config constructor and no repo defaults, ListTx should return all users")
+	assert.Equal(t, 30, total, "ListTx total should reflect all records")
 }
 
 func TestRepository_List_DefaultPaginationConfigured(t *testing.T) {
@@ -1148,7 +1183,7 @@ func TestRepository_SetDefaultListPagination(t *testing.T) {
 	setupTestData(t)
 
 	ctx := context.Background()
-	userRepo := newTestUserRepository(db)
+	userRepo := newTestUserRepositoryWithConfig(db, nil)
 
 	now := time.Now()
 	for i := 1; i <= 30; i++ {

@@ -61,6 +61,27 @@ func newTestUserRepository(db *bun.DB, opts ...Option) Repository[*TestUser] {
 	return MustNewRepositoryWithOptions[*TestUser](db, handlers, opts...)
 }
 
+func newTestUserRepositoryWithConfig(db *bun.DB, dbOpts []Option, repoOpts ...RepoOption) Repository[*TestUser] {
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser {
+			return &TestUser{}
+		},
+		GetID: func(record *TestUser) uuid.UUID {
+			return record.ID
+		},
+		SetID: func(record *TestUser, id uuid.UUID) {
+			record.ID = id
+		},
+		GetIdentifier: func() string {
+			return "email"
+		},
+		GetIdentifierValue: func(record *TestUser) string {
+			return record.Email
+		},
+	}
+	return MustNewRepositoryWithConfig[*TestUser](db, handlers, dbOpts, repoOpts...)
+}
+
 func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {
 	handlers := ModelHandlers[*TestCompany]{
 		NewRecord: func() *TestCompany {
@@ -1001,13 +1022,11 @@ func TestRepository_List(t *testing.T) {
 
 	users, total, err := userRepo.List(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 30, len(users), "Should return all users when no pagination criteria is provided")
 	assert.Equal(t, 30, total, "Total should reflect all records")
 
 	// Test List with custom limit and offset
-	criteria := func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Limit(10).Offset(5)
-	}
+	criteria := SelectPaginate(10, 5)
 	users, total, err = userRepo.List(ctx, criteria)
 	assert.NoError(t, err)
 	assert.Equal(t, 10, len(users), "Should return 10 users")
@@ -1065,7 +1084,7 @@ func TestRepository_ListTx(t *testing.T) {
 
 	users, total, err := userRepo.ListTx(ctx, tx)
 	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 35, len(users), "Should return all users in tx when no pagination criteria is provided")
 	assert.Equal(t, 35, total, "Total should include records in transaction")
 
 	err = tx.Commit()
@@ -1074,8 +1093,106 @@ func TestRepository_ListTx(t *testing.T) {
 	// Verify that the new records are persisted
 	users, total, err = userRepo.List(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return default limit of 25 users")
+	assert.Equal(t, 35, len(users), "Should return all persisted users when no pagination criteria is provided")
 	assert.Equal(t, 35, total, "Total should reflect all records")
+}
+
+func TestRepository_List_DefaultPaginationConfigured(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithConfig(db, nil, WithDefaultListPagination(25, 0))
+
+	now := time.Now()
+	for i := 1; i <= 30; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	users, total, err := userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 25, len(users), "Configured default pagination should cap list results")
+	assert.Equal(t, 30, total, "Total should reflect all records")
+
+	users, total, err = userRepo.List(ctx, SelectPaginate(10, 5))
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(users), "Explicit pagination should override configured defaults")
+	assert.Equal(t, 30, total, "Total should remain full count")
+	assert.Equal(t, "User 6", users[0].Name, "First user should be 'User 6'")
+	assert.Equal(t, "User 15", users[9].Name, "Last user should be 'User 15'")
+
+	tx, err := db.BeginTx(ctx, nil)
+	assert.NoError(t, err)
+	defer tx.Rollback()
+
+	users, total, err = userRepo.ListTx(ctx, tx)
+	assert.NoError(t, err)
+	assert.Equal(t, 25, len(users), "Configured default pagination should apply to ListTx")
+	assert.Equal(t, 30, total, "ListTx total should remain full count")
+
+	users, total, err = userRepo.ListTx(ctx, tx, SelectPaginate(8, 4))
+	assert.NoError(t, err)
+	assert.Equal(t, 8, len(users), "Explicit ListTx pagination should override configured defaults")
+	assert.Equal(t, 30, total, "ListTx total should remain full count")
+}
+
+func TestRepository_SetDefaultListPagination(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	now := time.Now()
+	for i := 1; i <= 30; i++ {
+		user := &TestUser{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("User %d", i),
+			Email:     fmt.Sprintf("user%d@example.com", i),
+			CompanyID: uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	users, total, err := userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 30, len(users))
+	assert.Equal(t, 30, total)
+
+	paginator, ok := userRepo.(DefaultListPaginationConfigurer)
+	assert.True(t, ok, "expected repository to implement DefaultListPaginationConfigurer")
+	if !ok {
+		return
+	}
+
+	paginator.SetDefaultListPagination(12, 2)
+
+	users, total, err = userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 12, len(users))
+	assert.Equal(t, 30, total)
+
+	users, total, err = userRepo.List(ctx, SelectPaginate(10, 5))
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(users), "Explicit pagination should override runtime default pagination")
+	assert.Equal(t, 30, total)
+
+	paginator.SetDefaultListPagination(0, 0)
+
+	users, total, err = userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 30, len(users), "Setting limit <= 0 should disable default pagination")
+	assert.Equal(t, 30, total)
 }
 
 func TestRepository_GetModelFields_InvalidatesPerModelType(t *testing.T) {

@@ -4,6 +4,22 @@
 
 ## <!-- 16 -->➕ Add
 
+- Preserve old values ([2a98671](https://github.com/goliatone/go-repository-bun/commit/2a986716e052a57debe2f2529653d058542ae88a))  - (goliatone)
+- Repo options to control limit, offset values ([bb08476](https://github.com/goliatone/go-repository-bun/commit/bb08476fc7b80e485828198911bca754386f56e3))  - (goliatone)
+- Repo options ([7512311](https://github.com/goliatone/go-repository-bun/commit/7512311ea01f1ffb0f85257ae39b7cd6a8876cc2))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([90e91db](https://github.com/goliatone/go-repository-bun/commit/90e91dbe0c433432ce2ea02b95149624e3a6ffe8))  - (goliatone)
+
+# [0.13.0](https://github.com/goliatone/go-repository-bun/compare/v0.12.0...v0.13.0) - (2026-02-09)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.13.0 ([e54f2d9](https://github.com/goliatone/go-repository-bun/commit/e54f2d9658bd1663bf29e789dcdcbb8e9c8728fd))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Map error helper ([b3282ce](https://github.com/goliatone/go-repository-bun/commit/b3282ce7fe3129623f7038c47db9f17f08b01091))  - (goliatone)
 - Map helpers ([862cdd0](https://github.com/goliatone/go-repository-bun/commit/862cdd0dab8ab6e8b667b691ef036abd1210a2f5))  - (goliatone)
 

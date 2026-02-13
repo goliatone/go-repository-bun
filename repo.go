@@ -155,12 +155,22 @@ type IdentifierOption struct {
 	Value  string
 }
 
+const (
+	legacyDefaultListLimit  = 25
+	legacyDefaultListOffset = 0
+)
+
 func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 	return NewRepositoryWithOptions(db, handlers)
 }
 
 func NewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
-	return NewRepositoryWithConfig(db, handlers, opts)
+	return NewRepositoryWithConfig(
+		db,
+		handlers,
+		opts,
+		WithDefaultListPagination(legacyDefaultListLimit, legacyDefaultListOffset),
+	)
 }
 
 func NewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpts []Option, repoOpts ...RepoOption) Repository[T] {

@@ -101,6 +101,15 @@ type Meta[T any] interface {
 	TableName() string
 }
 
+// DefaultListPaginationConfigurer is an optional capability for repository instances that support
+// mutating default list pagination at runtime.
+//
+// Prefer configuring defaults at initialization via NewRepositoryWithConfig(..., WithDefaultListPagination(...)).
+// Runtime mutation in live concurrent systems can lead to mixed pagination behavior across requests.
+type DefaultListPaginationConfigurer interface {
+	SetDefaultListPagination(limit, offset int)
+}
+
 type repo[T any] struct {
 	db       *bun.DB
 	handlers ModelHandlers[T]
@@ -111,6 +120,11 @@ type repo[T any] struct {
 	scopesMu sync.RWMutex
 
 	scopeDefaults ScopeDefaults
+
+	listDefaultsMu               sync.RWMutex
+	defaultListPaginationEnabled bool
+	defaultListLimit             int
+	defaultListOffset            int
 }
 
 func (r *repo[T]) resetScopes() {
@@ -146,18 +160,36 @@ func NewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
 }
 
 func NewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], opts ...Option) Repository[T] {
-	for _, opt := range opts {
+	return NewRepositoryWithConfig(db, handlers, opts)
+}
+
+func NewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpts []Option, repoOpts ...RepoOption) Repository[T] {
+	for _, opt := range dbOpts {
 		if opt == nil {
 			continue
 		}
 		opt(db)
 	}
 
-	return &repo[T]{
+	cfg := &repoConfig{}
+	for _, opt := range repoOpts {
+		if opt == nil {
+			continue
+		}
+		opt(cfg)
+	}
+
+	instance := &repo[T]{
 		db:       db,
 		handlers: handlers,
 		driver:   DetectDriver(db),
 	}
+
+	if cfg.defaultListPaginationConfigured {
+		instance.SetDefaultListPagination(cfg.defaultListLimit, cfg.defaultListOffset)
+	}
+
+	return instance
 }
 
 func MustNewRepository[T any](db *bun.DB, handlers ModelHandlers[T]) Repository[T] {
@@ -174,6 +206,14 @@ func MustNewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], 
 	}
 
 	return NewRepositoryWithOptions(db, handlers, opts...)
+}
+
+func MustNewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpts []Option, repoOpts ...RepoOption) Repository[T] {
+	if err := validateRepositoryConfig(db, handlers); err != nil {
+		panic(err)
+	}
+
+	return NewRepositoryWithConfig(db, handlers, dbOpts, repoOpts...)
 }
 
 func (r *repo[T]) Validate() error {
@@ -283,6 +323,41 @@ func (r *repo[T]) GetScopeDefaults() ScopeDefaults {
 	return CloneScopeDefaults(r.scopeDefaults)
 }
 
+// SetDefaultListPagination mutates default list pagination for this repository instance.
+// Prefer configuring this at initialization via NewRepositoryWithConfig(..., WithDefaultListPagination(...))
+// and avoid changing it at runtime in live systems: even though writes are synchronized, callers can observe
+// different defaults across concurrent requests.
+func (r *repo[T]) SetDefaultListPagination(limit, offset int) {
+	r.listDefaultsMu.Lock()
+	defer r.listDefaultsMu.Unlock()
+
+	if limit <= 0 {
+		r.defaultListPaginationEnabled = false
+		r.defaultListLimit = 0
+		r.defaultListOffset = 0
+		return
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	r.defaultListPaginationEnabled = true
+	r.defaultListLimit = limit
+	r.defaultListOffset = offset
+}
+
+func (r *repo[T]) defaultListPagination() (int, int, bool) {
+	r.listDefaultsMu.RLock()
+	defer r.listDefaultsMu.RUnlock()
+
+	if !r.defaultListPaginationEnabled {
+		return 0, 0, false
+	}
+
+	return r.defaultListLimit, r.defaultListOffset, true
+}
+
 func (r *repo[T]) Get(ctx context.Context, criteria ...SelectCriteria) (T, error) {
 	return r.GetTx(ctx, r.db, criteria...)
 }
@@ -323,9 +398,9 @@ func (r *repo[T]) ListTx(ctx context.Context, tx bun.IDB, criteria ...SelectCrit
 	q := tx.NewSelect().
 		Model(&records)
 
-	// Set Limit Offset default values
-	// if we apply again in criteria, we override
-	q.Limit(25).Offset(0)
+	if limit, offset, ok := r.defaultListPagination(); ok {
+		q.Limit(limit).Offset(offset)
+	}
 
 	q = r.applySelectScopes(ctx, q)
 

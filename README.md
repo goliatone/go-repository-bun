@@ -228,6 +228,10 @@ If you need to propagate the active scope set into other infrastructure (for exa
 ### Query Criteria
 
 ```go
+// Legacy constructors keep compatibility defaults: LIMIT 25 OFFSET 0.
+userRepo := repository.MustNewRepository[*User](db, handlers)
+users, total, err := userRepo.List(ctx)
+
 // List with pagination
 users, total, err := userRepo.List(ctx,
     repository.SelectPaginate(10, 0),
@@ -259,6 +263,40 @@ err := userRepo.DeleteWhere(ctx,
 // Delete by ID list
 err = userRepo.DeleteWhere(ctx, repository.DeleteByIDs([]string{"id-1", "id-2"}))
 ```
+
+Use the config constructor to disable implicit pagination defaults:
+
+```go
+userRepo := repository.MustNewRepositoryWithConfig[*User](
+    db,
+    handlers,
+    nil, // db options
+    // no repo options => no implicit LIMIT/OFFSET
+)
+```
+
+You can also set per repository defaults explicitly:
+
+```go
+userRepo := repository.MustNewRepositoryWithConfig[*User](
+    db,
+    handlers,
+    nil, // db options
+    repository.WithDefaultListPagination(50, 0),
+)
+```
+
+Runtime mutation is also available via `SetDefaultListPagination(limit, offset)`, but it should be treated as an initialization stage setting. Changing defaults in live concurrent systems can lead to mixed pagination behavior across requests.
+
+`SetDefaultListPagination` is exposed via the optional `DefaultListPaginationConfigurer` interface (not the base `Repository` interface):
+
+```go
+if cfg, ok := userRepo.(repository.DefaultListPaginationConfigurer); ok {
+    cfg.SetDefaultListPagination(25, 0)
+}
+```
+
+Migration note: `NewRepository` and `NewRepositoryWithOptions` preserve legacy `LIMIT 25 OFFSET 0` behavior for compatibility. To opt into unbounded default list behavior, use `NewRepositoryWithConfig(..., nil)` (or pass repo options explicitly).
 
 ### Transactions
 

@@ -3,11 +3,9 @@ package repository
 import (
 	"database/sql"
 	stderrors "errors"
-
 	"fmt"
 
 	"github.com/goliatone/go-errors"
-	"github.com/google/uuid"
 )
 
 // ErrRecordNotFound is a sentinel error that enables errors.Is(err, ErrRecordNotFound) checks.
@@ -63,9 +61,4 @@ func IsRecordNotFound(err error) bool {
 	}
 
 	return false
-}
-
-func isUUID(identifier string) bool {
-	_, err := uuid.Parse(identifier)
-	return err == nil
 }

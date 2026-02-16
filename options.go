@@ -19,6 +19,7 @@ type repoConfig struct {
 	defaultListPaginationConfigured bool
 	defaultListLimit                int
 	defaultListOffset               int
+	allowFullTableDelete            bool
 	recordLookupResolver            any
 	recordLookupResolverType        reflect.Type
 }
@@ -57,6 +58,17 @@ func WithDefaultListPagination(limit, offset int) RepoOption {
 		cfg.defaultListPaginationConfigured = true
 		cfg.defaultListLimit = limit
 		cfg.defaultListOffset = offset
+	}
+}
+
+// WithAllowFullTableDelete enables DeleteWhere/DeleteMany calls without criteria.
+// Defaults to false for safety.
+func WithAllowFullTableDelete(enabled bool) RepoOption {
+	return func(cfg *repoConfig) {
+		if cfg == nil {
+			return
+		}
+		cfg.allowFullTableDelete = enabled
 	}
 }
 

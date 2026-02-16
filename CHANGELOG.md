@@ -1,6 +1,10 @@
 # Changelog
 
-# [unreleased]
+# [0.14.1](https://github.com/goliatone/go-repository-bun/compare/v0.14.0...v0.14.1) - (2026-02-16)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.14.1 ([4af6c99](https://github.com/goliatone/go-repository-bun/commit/4af6c9947f8c859f4287dc87eb203b82d6119c64))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 

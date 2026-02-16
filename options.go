@@ -19,6 +19,31 @@ type repoConfig struct {
 	defaultListPaginationConfigured bool
 	defaultListLimit                int
 	defaultListOffset               int
+	recordLookupResolver            any
+	recordLookupResolverType        reflect.Type
+}
+
+// RecordLookupResolver resolves select criteria used to find an existing record
+// during Upsert/GetOrCreate when ID and identifier lookups miss.
+type RecordLookupResolver[T any] func(record T) []SelectCriteria
+
+// WithRecordLookupResolver configures an optional custom existing-record lookup.
+// A nil resolver disables custom lookup.
+func WithRecordLookupResolver[T any](resolver RecordLookupResolver[T]) RepoOption {
+	return func(cfg *repoConfig) {
+		if cfg == nil {
+			return
+		}
+
+		if resolver == nil {
+			cfg.recordLookupResolver = nil
+			cfg.recordLookupResolverType = nil
+			return
+		}
+
+		cfg.recordLookupResolver = resolver
+		cfg.recordLookupResolverType = reflect.TypeOf((*T)(nil)).Elem()
+	}
 }
 
 // WithDefaultListPagination configures repository-level default pagination.

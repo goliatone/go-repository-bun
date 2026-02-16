@@ -32,3 +32,14 @@ func TestDeleteColumnIn_MatchesAnyValue(t *testing.T) {
 	sql := query.String()
 	assert.Contains(t, sql, "IN")
 }
+
+func TestDeleteBy_InvalidOperatorFailsClosed(t *testing.T) {
+	setupTestData(t)
+
+	query := db.NewDelete().
+		Model((*TestUser)(nil)).
+		Apply(DeleteBy("id", "OR 1=1 --", "value"))
+
+	sql := query.String()
+	assert.True(t, strings.Contains(sql, "1=0") || strings.Contains(sql, "1 = 0"))
+}

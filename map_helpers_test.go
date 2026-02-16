@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	stderrors "errors"
+	"math"
 	"testing"
 	"time"
 
@@ -19,6 +20,10 @@ type mapHelperModel struct {
 	Hidden    string     `bun:"hidden" json:"-"`
 	NoPersist string     `bun:"-" json:"no_persist"`
 	CreatedAt *time.Time `bun:"created_at" json:"created_at,omitempty"`
+}
+
+type mapHelperUnsignedModel struct {
+	Value uint64 `bun:"value" json:"value"`
 }
 
 func TestRecordToMap_DefaultUsesBunKeys(t *testing.T) {
@@ -218,4 +223,18 @@ func TestRecordNotFoundSentinelSupportsErrorsIs(t *testing.T) {
 	err := NewRecordNotFound()
 	assert.True(t, stderrors.Is(err, ErrRecordNotFound))
 	assert.True(t, IsRecordNotFound(err))
+}
+
+func TestApplyMapPatch_RejectsOverflowAndUnderflow(t *testing.T) {
+	_, _, err := ApplyMapPatch(&mapHelperModel{}, map[string]any{
+		"count": uint64(math.MaxUint64),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "overflows int64")
+
+	_, _, err = ApplyMapPatch(&mapHelperUnsignedModel{}, map[string]any{
+		"value": int64(-1),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "underflows uint64")
 }

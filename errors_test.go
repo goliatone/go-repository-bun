@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 	"regexp"
 	"testing"
@@ -306,7 +307,7 @@ func TestMapMSSQLErrors_Debug(t *testing.T) {
 	matches := re.MatchString(errorMsg)
 	t.Logf("Pattern '%s' matches '%s': %t", pattern, errorMsg, matches)
 
-	err := fmt.Errorf(errorMsg)
+	err := stderrors.New(errorMsg)
 	result := MapMSSQLErrors(err)
 	t.Logf("MapMSSQLErrors('%s') = %v", errorMsg, result)
 

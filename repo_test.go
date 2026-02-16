@@ -149,6 +149,23 @@ func TestRepository_MustNewRepository_InvalidConfigPanics(t *testing.T) {
 	})
 }
 
+func TestRepository_NewRepositoryWithConfig_NilDBDoesNotPanic(t *testing.T) {
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser { return &TestUser{} },
+		GetID:     func(record *TestUser) uuid.UUID { return record.ID },
+		SetID:     func(record *TestUser, id uuid.UUID) { record.ID = id },
+	}
+
+	assert.NotPanics(t, func() {
+		repo := NewRepositoryWithConfig[*TestUser](nil, handlers, nil)
+		assert.NotNil(t, repo)
+
+		validator, ok := repo.(Validator)
+		assert.True(t, ok)
+		assert.Error(t, validator.Validate())
+	})
+}
+
 func TestRepository_ValidateReturnsValidationErrors(t *testing.T) {
 	repo := &repo[*TestUser]{
 		db:       nil,
@@ -283,6 +300,17 @@ func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
 	assert.True(t, IsRecordNotFound(err))
 }
 
+func TestRepository_GetByIdentifier_EmptyIdentifierReturnsNotFound(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	_, err := userRepo.GetByIdentifier(ctx, "   ")
+	assert.Error(t, err)
+	assert.True(t, IsRecordNotFound(err))
+}
+
 func TestRepository_Scopes_SelectDefault(t *testing.T) {
 	setupTestData(t)
 
@@ -351,6 +379,37 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 		assert.Equal(t, tenantCompany.ID, records[0].CompanyID)
 		assert.Equal(t, "Tenant User", records[0].Name)
 	}
+}
+
+func TestRepository_Scopes_SelectDefaultRequiredFailsClosedWithoutData(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+	userRepo.(*repo[*TestUser]).resetScopes()
+
+	const tenantScope = "tenant"
+
+	userRepo.RegisterScope(tenantScope, ScopeByFieldRequired(tenantScope, "company_id"))
+	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+		Select: []string{tenantScope},
+	}))
+
+	user := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Tenant User",
+		Email:     "tenant.required@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+
+	records, total, err := userRepo.List(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Len(t, records, 0)
 }
 
 func TestRepository_SetScopeDefaults_UnknownScope(t *testing.T) {
@@ -769,6 +828,48 @@ func TestRepository_DeleteWhere(t *testing.T) {
 	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(remainingUsers))
+}
+
+func TestRepository_DeleteWhere_WithoutCriteriaBlockedByDefault(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepository(db)
+
+	user := &TestUser{ID: uuid.New(), Name: "User One", Email: "user1@example.com", CompanyID: uuid.New()}
+	_, err := userRepo.CreateTx(ctx, db, user)
+	assert.NoError(t, err)
+
+	err = userRepo.DeleteWhere(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsafe delete prevented")
+
+	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(remainingUsers))
+}
+
+func TestRepository_DeleteWhere_WithoutCriteriaAllowedWhenConfigured(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithConfig(db, nil, WithAllowFullTableDelete(true))
+
+	users := []*TestUser{
+		{ID: uuid.New(), Name: "User One", Email: "user1@example.com", CompanyID: uuid.New()},
+		{ID: uuid.New(), Name: "User Two", Email: "user2@example.com", CompanyID: uuid.New()},
+	}
+	for _, user := range users {
+		_, err := userRepo.CreateTx(ctx, db, user)
+		assert.NoError(t, err)
+	}
+
+	err := userRepo.DeleteWhere(ctx)
+	assert.NoError(t, err)
+
+	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(remainingUsers))
 }
 
 func TestRepository_TransactionCommit(t *testing.T) {

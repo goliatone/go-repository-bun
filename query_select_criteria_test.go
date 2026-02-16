@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -49,4 +50,26 @@ func TestSelectColumnNotIn_EmptySliceNoOp(t *testing.T) {
 	sql := query.String()
 	assert.NotContains(t, sql, "NOT IN ()")
 	assert.NotContains(t, sql, "NOT IN (NULL)")
+}
+
+func TestSelectBy_InvalidColumnFailsClosed(t *testing.T) {
+	setupTestData(t)
+
+	query := db.NewSelect().
+		Model((*TestUser)(nil)).
+		Apply(SelectBy("id;DROP TABLE users", "=", "123"))
+
+	sql := query.String()
+	assert.True(t, strings.Contains(sql, "1=0") || strings.Contains(sql, "1 = 0"))
+}
+
+func TestSelectColumnInSubq_InvalidSubqueryFailsClosed(t *testing.T) {
+	setupTestData(t)
+
+	query := db.NewSelect().
+		Model((*TestUser)(nil)).
+		Apply(SelectColumnInSubq("id", "DELETE FROM test_users"))
+
+	sql := query.String()
+	assert.True(t, strings.Contains(sql, "1=0") || strings.Contains(sql, "1 = 0"))
 }

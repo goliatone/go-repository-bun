@@ -114,6 +114,36 @@ userRepo := repository.MustNewRepository[*User](db, handlers)
 
 `ResolveIdentifier` is optional. When provided, the repository will try each returned `IdentifierOption` (column/value pair) in order until a record is found. Returning `nil` or an empty slice falls back to the default `GetIdentifier`/`GetIdentifierValue` behaviour.
 
+For `Upsert*` and `GetOrCreate*`, you can also configure a composite/natural key resolver through repo options:
+
+```go
+userRepo := repository.MustNewRepositoryWithConfig[*User](
+    db,
+    handlers,
+    nil, // db options
+    repository.WithRecordLookupResolver(func(record *User) []repository.SelectCriteria {
+        if record == nil {
+            return nil
+        }
+        return []repository.SelectCriteria{
+            repository.SelectBy("company_id", "=", record.CompanyID.String()),
+            repository.SelectBy("name", "=", record.Name),
+            // Optional domain ordering
+            repository.OrderBy("updated_at DESC"),
+        }
+    }),
+)
+```
+
+Lookup precedence in `Upsert*`/`GetOrCreate*` is:
+1. `ID`
+2. identifier (`GetIdentifierValue`)
+3. `WithRecordLookupResolver` criteria
+
+If resolver criteria are used, the repository appends a stable `id ASC` tie breaker to guarantee deterministic selection when criteria are not unique.
+
+`WithRecordLookupResolver` is type checked against the repository model type. Mismatches fail validation and will fail `Upsert*`/`GetOrCreate*` fast if not validated explicitly.
+
 ### Basic Operations
 
 ```go

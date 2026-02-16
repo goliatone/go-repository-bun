@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -755,17 +756,6 @@ func assignValue(dst reflect.Value, src any) error {
 	}
 
 	srcValue := reflect.ValueOf(src)
-	if srcValue.IsValid() {
-		if srcValue.Type().AssignableTo(dst.Type()) {
-			dst.Set(srcValue)
-			return nil
-		}
-		if srcValue.Type().ConvertibleTo(dst.Type()) {
-			dst.Set(srcValue.Convert(dst.Type()))
-			return nil
-		}
-	}
-
 	switch dst.Kind() {
 	case reflect.String:
 		dst.SetString(fmt.Sprint(src))
@@ -801,6 +791,17 @@ func assignValue(dst reflect.Value, src any) error {
 	case reflect.Interface:
 		dst.Set(reflect.ValueOf(src))
 		return nil
+	}
+
+	if srcValue.IsValid() {
+		if srcValue.Type().AssignableTo(dst.Type()) {
+			dst.Set(srcValue)
+			return nil
+		}
+		if srcValue.Type().ConvertibleTo(dst.Type()) {
+			dst.Set(srcValue.Convert(dst.Type()))
+			return nil
+		}
 	}
 
 	return fmt.Errorf("cannot assign %T to %s", src, dst.Type())
@@ -914,10 +915,7 @@ func isBunTagOption(part string) bool {
 }
 
 func shouldSkipMapField(field reflect.StructField) bool {
-	if field.Name == "BaseModel" {
-		return true
-	}
-	return false
+	return field.Name == "BaseModel"
 }
 
 func shouldInlineMapField(field reflect.StructField) bool {
@@ -1048,6 +1046,9 @@ func toInt64(src any) (int64, error) {
 	case int64:
 		return v, nil
 	case uint:
+		if uint64(v) > uint64(math.MaxInt64) {
+			return 0, fmt.Errorf("uint value %d overflows int64", v)
+		}
 		return int64(v), nil
 	case uint8:
 		return int64(v), nil
@@ -1056,11 +1057,14 @@ func toInt64(src any) (int64, error) {
 	case uint32:
 		return int64(v), nil
 	case uint64:
+		if v > uint64(math.MaxInt64) {
+			return 0, fmt.Errorf("uint64 value %d overflows int64", v)
+		}
 		return int64(v), nil
 	case float32:
-		return int64(v), nil
+		return floatToInt64(float64(v))
 	case float64:
-		return int64(v), nil
+		return floatToInt64(v)
 	case string:
 		parsed, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -1075,14 +1079,29 @@ func toInt64(src any) (int64, error) {
 func toUint64(src any) (uint64, error) {
 	switch v := src.(type) {
 	case int:
+		if v < 0 {
+			return 0, fmt.Errorf("int value %d underflows uint64", v)
+		}
 		return uint64(v), nil
 	case int8:
+		if v < 0 {
+			return 0, fmt.Errorf("int8 value %d underflows uint64", v)
+		}
 		return uint64(v), nil
 	case int16:
+		if v < 0 {
+			return 0, fmt.Errorf("int16 value %d underflows uint64", v)
+		}
 		return uint64(v), nil
 	case int32:
+		if v < 0 {
+			return 0, fmt.Errorf("int32 value %d underflows uint64", v)
+		}
 		return uint64(v), nil
 	case int64:
+		if v < 0 {
+			return 0, fmt.Errorf("int64 value %d underflows uint64", v)
+		}
 		return uint64(v), nil
 	case uint:
 		return uint64(v), nil
@@ -1095,9 +1114,9 @@ func toUint64(src any) (uint64, error) {
 	case uint64:
 		return v, nil
 	case float32:
-		return uint64(v), nil
+		return floatToUint64(float64(v))
 	case float64:
-		return uint64(v), nil
+		return floatToUint64(v)
 	case string:
 		parsed, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
@@ -1107,6 +1126,35 @@ func toUint64(src any) (uint64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported uint source type %T", src)
 	}
+}
+
+func floatToInt64(v float64) (int64, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("unsupported float value %v", v)
+	}
+	if v < math.MinInt64 || v > math.MaxInt64 {
+		return 0, fmt.Errorf("float value %v overflows int64", v)
+	}
+	if math.Trunc(v) != v {
+		return 0, fmt.Errorf("float value %v is not an integer", v)
+	}
+	return int64(v), nil
+}
+
+func floatToUint64(v float64) (uint64, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("unsupported float value %v", v)
+	}
+	if v < 0 {
+		return 0, fmt.Errorf("float value %v underflows uint64", v)
+	}
+	if v > float64(math.MaxUint64) {
+		return 0, fmt.Errorf("float value %v overflows uint64", v)
+	}
+	if math.Trunc(v) != v {
+		return 0, fmt.Errorf("float value %v is not an integer", v)
+	}
+	return uint64(v), nil
 }
 
 func toFloat64(src any) (float64, error) {

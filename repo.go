@@ -121,6 +121,8 @@ type repo[T any] struct {
 
 	scopeDefaults ScopeDefaults
 
+	allowFullTableDelete bool
+
 	recordLookupResolver    RecordLookupResolver[T]
 	recordLookupResolverErr error
 
@@ -177,11 +179,13 @@ func NewRepositoryWithOptions[T any](db *bun.DB, handlers ModelHandlers[T], opts
 }
 
 func NewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpts []Option, repoOpts ...RepoOption) Repository[T] {
-	for _, opt := range dbOpts {
-		if opt == nil {
-			continue
+	if db != nil {
+		for _, opt := range dbOpts {
+			if opt == nil {
+				continue
+			}
+			opt(db)
 		}
-		opt(db)
 	}
 
 	cfg := &repoConfig{}
@@ -198,6 +202,7 @@ func NewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpt
 		db:                      db,
 		handlers:                handlers,
 		driver:                  DetectDriver(db),
+		allowFullTableDelete:    cfg.allowFullTableDelete,
 		recordLookupResolver:    recordLookupResolver,
 		recordLookupResolverErr: recordLookupResolverErr,
 	}
@@ -749,12 +754,18 @@ func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criter
 
 func (r *repo[T]) resolveIdentifierOptions(identifier string) []IdentifierOption {
 	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
+		return nil
+	}
 	var options []IdentifierOption
 
 	if r.handlers.ResolveIdentifier != nil {
 		for _, opt := range r.handlers.ResolveIdentifier(identifier) {
 			column := strings.TrimSpace(opt.Column)
 			if column == "" {
+				continue
+			}
+			if _, ok := normalizeSQLIdentifier(column); !ok {
 				continue
 			}
 
@@ -777,8 +788,13 @@ func (r *repo[T]) resolveIdentifierOptions(identifier string) []IdentifierOption
 		column := "id"
 		if r.handlers.GetIdentifier != nil {
 			if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
-				column = col
+				if _, ok := normalizeSQLIdentifier(col); ok {
+					column = col
+				}
 			}
+		}
+		if _, ok := normalizeSQLIdentifier(column); !ok {
+			column = "id"
 		}
 
 		options = append(options, IdentifierOption{
@@ -795,8 +811,16 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 	var lastErr error
 
 	options := r.resolveIdentifierOptions(identifier)
+	if len(options) == 0 {
+		return zero, r.mapError(sql.ErrNoRows)
+	}
 
 	for _, opt := range options {
+		column, ok := normalizeSQLIdentifier(opt.Column)
+		if !ok {
+			continue
+		}
+
 		record := r.handlers.NewRecord()
 
 		q := tx.NewSelect().Model(record)
@@ -806,7 +830,7 @@ func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier 
 			q.Apply(c)
 		}
 
-		q = q.Where(fmt.Sprintf("?TableAlias.%s = ?", opt.Column), opt.Value).Limit(1)
+		q = q.Where(fmt.Sprintf("?TableAlias.%s = ?", column), opt.Value).Limit(1)
 
 		if err := q.Scan(ctx); err != nil {
 			if IsRecordNotFound(err) {
@@ -1011,12 +1035,29 @@ func (r *repo[T]) DeleteWhere(ctx context.Context, criteria ...DeleteCriteria) e
 }
 
 func (r *repo[T]) DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...DeleteCriteria) error {
+	if !r.allowFullTableDelete && !hasDeleteCriteria(criteria) {
+		return errors.NewValidation(
+			"repository: unsafe delete prevented",
+			errors.FieldError{
+				Field:   "criteria",
+				Message: "at least one delete criterion is required; use WithAllowFullTableDelete(true) to allow full-table deletes",
+			},
+		)
+	}
+
 	record := r.handlers.NewRecord()
 	q := tx.NewDelete().Model(record)
 
 	q = r.applyDeleteScopes(ctx, q)
 
+	if r.allowFullTableDelete && !hasDeleteCriteria(criteria) {
+		q = q.Where("1=1")
+	}
+
 	for _, c := range criteria {
+		if c == nil {
+			continue
+		}
 		q.Apply(c)
 	}
 	_, err := q.Exec(ctx)
@@ -1141,6 +1182,10 @@ func (r *repo[T]) resolveScopeDefinitions(ctx context.Context, op ScopeOperation
 }
 
 func DetectDriver(db *bun.DB) string {
+	if db == nil {
+		return "unknown"
+	}
+
 	switch db.Dialect().Name() {
 	case dialect.PG:
 		return "postgres"
@@ -1153,6 +1198,15 @@ func DetectDriver(db *bun.DB) string {
 	default:
 		return "unknown"
 	}
+}
+
+func hasDeleteCriteria(criteria []DeleteCriteria) bool {
+	for _, c := range criteria {
+		if c != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveRecordLookupResolver[T any](cfg *repoConfig) (RecordLookupResolver[T], error) {

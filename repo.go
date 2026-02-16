@@ -121,6 +121,9 @@ type repo[T any] struct {
 
 	scopeDefaults ScopeDefaults
 
+	recordLookupResolver    RecordLookupResolver[T]
+	recordLookupResolverErr error
+
 	listDefaultsMu               sync.RWMutex
 	defaultListPaginationEnabled bool
 	defaultListLimit             int
@@ -189,10 +192,14 @@ func NewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], dbOpt
 		opt(cfg)
 	}
 
+	recordLookupResolver, recordLookupResolverErr := resolveRecordLookupResolver[T](cfg)
+
 	instance := &repo[T]{
-		db:       db,
-		handlers: handlers,
-		driver:   DetectDriver(db),
+		db:                      db,
+		handlers:                handlers,
+		driver:                  DetectDriver(db),
+		recordLookupResolver:    recordLookupResolver,
+		recordLookupResolverErr: recordLookupResolverErr,
 	}
 
 	if cfg.defaultListPaginationConfigured {
@@ -223,11 +230,23 @@ func MustNewRepositoryWithConfig[T any](db *bun.DB, handlers ModelHandlers[T], d
 		panic(err)
 	}
 
-	return NewRepositoryWithConfig(db, handlers, dbOpts, repoOpts...)
+	instance := NewRepositoryWithConfig(db, handlers, dbOpts, repoOpts...)
+	if validator, ok := instance.(Validator); ok {
+		if err := validator.Validate(); err != nil {
+			panic(err)
+		}
+	}
+	return instance
 }
 
 func (r *repo[T]) Validate() error {
-	return validateRepositoryConfig(r.db, r.handlers)
+	if err := validateRepositoryConfig(r.db, r.handlers); err != nil {
+		return err
+	}
+	if r.recordLookupResolverErr != nil {
+		return r.recordLookupResolverErr
+	}
+	return nil
 }
 
 func (r *repo[T]) MustValidate() {
@@ -633,6 +652,10 @@ func splitUpdateCriteriaForReturnOrder(criteria []UpdateCriteria) (bool, []Updat
 func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
 	var zero T
 
+	if r.recordLookupResolverErr != nil {
+		return zero, false, r.recordLookupResolverErr
+	}
+
 	if r.handlers.GetID != nil {
 		if id := r.handlers.GetID(record); id != uuid.Nil {
 			existing, err := r.GetByIDTx(ctx, tx, id.String())
@@ -653,6 +676,32 @@ func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) 
 			}
 			if !IsRecordNotFound(err) {
 				return zero, false, err
+			}
+		}
+	}
+
+	if r.recordLookupResolver != nil {
+		customCriteria := r.recordLookupResolver(record)
+		if len(customCriteria) > 0 {
+			criteria := make([]SelectCriteria, 0, len(customCriteria)+1)
+			for _, c := range customCriteria {
+				if c == nil {
+					continue
+				}
+				criteria = append(criteria, c)
+			}
+
+			// Always append a stable tie-breaker for deterministic row selection
+			// when resolver criteria are not unique.
+			criteria = append(criteria, SelectOrderAsc("id"))
+			if len(criteria) > 1 { // ensure at least one non-order criteria is present
+				existing, err := r.GetTx(ctx, tx, criteria...)
+				if err == nil {
+					return existing, true, nil
+				}
+				if !IsRecordNotFound(err) {
+					return zero, false, err
+				}
 			}
 		}
 	}
@@ -1104,6 +1153,41 @@ func DetectDriver(db *bun.DB) string {
 	default:
 		return "unknown"
 	}
+}
+
+func resolveRecordLookupResolver[T any](cfg *repoConfig) (RecordLookupResolver[T], error) {
+	if cfg == nil || cfg.recordLookupResolver == nil {
+		return nil, nil
+	}
+
+	resolver, ok := cfg.recordLookupResolver.(RecordLookupResolver[T])
+	if ok {
+		return resolver, nil
+	}
+
+	expected := reflect.TypeOf((*T)(nil)).Elem()
+	actual := cfg.recordLookupResolverType
+	if actual == nil {
+		actual = reflect.TypeOf(cfg.recordLookupResolver)
+	}
+
+	expectedName := "<unknown>"
+	if expected != nil {
+		expectedName = expected.String()
+	}
+
+	actualName := "<unknown>"
+	if actual != nil {
+		actualName = actual.String()
+	}
+
+	return nil, errors.NewValidation(
+		"repository configuration invalid",
+		errors.FieldError{
+			Field:   "repoOptions.WithRecordLookupResolver",
+			Message: fmt.Sprintf("resolver type mismatch: expected %s, got %s", expectedName, actualName),
+		},
+	)
 }
 
 func validateRepositoryConfig[T any](db *bun.DB, handlers ModelHandlers[T]) error {

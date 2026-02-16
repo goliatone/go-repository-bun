@@ -237,6 +237,14 @@ To avoid duplicating the same guard logic in every scope, register the helper in
 userRepo.RegisterScope(tenantScope, repository.ScopeByField(tenantScope, "company_id"))
 ```
 
+`ScopeByField` is fail-closed: when scope data is missing/invalid, it adds a no-match predicate.
+
+For explicit fail-open behavior (legacy), use `ScopeByFieldOptional`:
+
+```go
+userRepo.RegisterScope(tenantScope, repository.ScopeByFieldOptional(tenantScope, "company_id"))
+```
+
 Activate scopes through the context. Default scopes run automatically unless disabled:
 
 ```go
@@ -251,7 +259,7 @@ users, total, err = userRepo.List(ctx) // scope applied explicitly
 
 Other operations can be scoped with `WithInsertScopes`, `WithUpdateScopes`, and `WithDeleteScopes`.
 
-When scope data is missing or empty, `ScopeByField` simply skips adding criteria, allowing the underlying query to execute unscoped. Supplying data of the wrong type (for example, anything that cannot be converted to a non-empty string or `uuid.UUID`) has the same effect—no scope filters are applied. To surface configuration mistakes early, `SetScopeDefaults` validates that every default references a registered scope and returns a validation error otherwise.
+When scope data is missing or empty, `ScopeByField`/`ScopeByFieldRequired` add a no-match predicate so queries fail closed. If you need fail-open behavior, use `ScopeByFieldOptional`. To surface configuration mistakes early, `SetScopeDefaults` validates that every default references a registered scope and returns a validation error otherwise.
 
 If you need to propagate the active scope set into other infrastructure (for example, cache decorators), use `repository.ResolveScopeState(ctx, defaults, repository.ScopeOperationSelect)` together with `repository.ScopeDataSnapshot(ctx)` to build deterministic signatures.
 
@@ -266,6 +274,12 @@ users, total, err := userRepo.List(ctx)
 users, total, err := userRepo.List(ctx,
     repository.SelectPaginate(10, 0),
     repository.OrderBy("created_at DESC"),
+)
+
+// Unsafe identifier/operator inputs are ignored or fail closed.
+// Column names and operators are validated internally.
+users, total, err = userRepo.List(ctx,
+    repository.SelectBy("status", "=", "active"),
 )
 
 // Complex queries
@@ -292,6 +306,17 @@ err := userRepo.DeleteWhere(ctx,
 
 // Delete by ID list
 err = userRepo.DeleteWhere(ctx, repository.DeleteByIDs([]string{"id-1", "id-2"}))
+```
+
+`DeleteWhere`/`DeleteMany` now require at least one non-nil criteria function by default. To explicitly allow full-table deletes, configure:
+
+```go
+userRepo := repository.MustNewRepositoryWithConfig[*User](
+    db,
+    handlers,
+    nil,
+    repository.WithAllowFullTableDelete(true),
+)
 ```
 
 Use the config constructor to disable implicit pagination defaults:

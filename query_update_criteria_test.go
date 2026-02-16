@@ -9,7 +9,7 @@ func TestUpdateBy_InvalidColumnFailsClosed(t *testing.T) {
 	setupTestData(t)
 
 	query := db.NewUpdate().
-		Model((*TestUser)(nil)).
+		Model(&TestUser{}).
 		Apply(UpdateBy("id;DROP TABLE test_users", "=", "123"))
 
 	sql := query.String()

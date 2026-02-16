@@ -1620,9 +1620,10 @@ func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, tenantUser.ID, upserted.ID)
 
-	reloadedTenant, err := userRepo.GetByID(ctx, tenantUser.ID.String())
+	unscopedCtx := WithoutDefaultScopes(ctx)
+	reloadedTenant, err := userRepo.GetByID(unscopedCtx, tenantUser.ID.String())
 	assert.NoError(t, err)
-	reloadedOther, err := userRepo.GetByID(ctx, otherUser.ID.String())
+	reloadedOther, err := userRepo.GetByID(unscopedCtx, otherUser.ID.String())
 	assert.NoError(t, err)
 
 	assert.True(t, reloadedTenant.UpdatedAt.Equal(updatedAt))

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
 type scopeContextKey struct{}
@@ -280,6 +281,22 @@ func uniqueStrings(values []string) []string {
 // Scope data may be provided as uuid.UUID, *uuid.UUID, or any fmt.Stringer/string
 // whose String() value is not blank.
 func ScopeByField(scopeName, field string) ScopeDefinition {
+	return scopeByField(scopeName, field, true)
+}
+
+// ScopeByFieldOptional keeps the legacy fail-open behavior of ScopeByField:
+// missing or invalid scope data results in no scope criteria being applied.
+func ScopeByFieldOptional(scopeName, field string) ScopeDefinition {
+	return scopeByField(scopeName, field, false)
+}
+
+// ScopeByFieldRequired behaves like ScopeByField, but it fails closed: if scope
+// data is missing or invalid, it applies a no-match criterion.
+func ScopeByFieldRequired(scopeName, field string) ScopeDefinition {
+	return ScopeByField(scopeName, field)
+}
+
+func scopeByField(scopeName, field string, required bool) ScopeDefinition {
 	scopeName = strings.TrimSpace(scopeName)
 	field = strings.TrimSpace(field)
 	if scopeName == "" || field == "" {
@@ -325,17 +342,38 @@ func ScopeByField(scopeName, field string) ScopeDefinition {
 			if value, ok := valueFor(ctx); ok {
 				return []SelectCriteria{SelectBy(field, "=", value)}
 			}
+			if required {
+				return []SelectCriteria{
+					func(q *bun.SelectQuery) *bun.SelectQuery {
+						return q.Where("1=0")
+					},
+				}
+			}
 			return nil
 		},
 		Update: func(ctx context.Context) []UpdateCriteria {
 			if value, ok := valueFor(ctx); ok {
 				return []UpdateCriteria{UpdateBy(field, "=", value)}
 			}
+			if required {
+				return []UpdateCriteria{
+					func(q *bun.UpdateQuery) *bun.UpdateQuery {
+						return q.Where("1=0")
+					},
+				}
+			}
 			return nil
 		},
 		Delete: func(ctx context.Context) []DeleteCriteria {
 			if value, ok := valueFor(ctx); ok {
 				return []DeleteCriteria{DeleteBy(field, "=", value)}
+			}
+			if required {
+				return []DeleteCriteria{
+					func(q *bun.DeleteQuery) *bun.DeleteQuery {
+						return q.Where("1=0")
+					},
+				}
 			}
 			return nil
 		},

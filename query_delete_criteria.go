@@ -21,25 +21,39 @@ func DeleteByIDs(ids []string) DeleteCriteria {
 // An empty slice results in a no-op filter that matches nothing.
 func DeleteColumnIn[T any](column string, values []T) DeleteCriteria {
 	return func(q *bun.DeleteQuery) *bun.DeleteQuery {
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q.Where("1=0")
+		}
 		if len(values) == 0 {
 			return q.Where("1=0")
 		}
-		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.In(values))
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", col), bun.In(values))
 	}
 }
 
 // DeleteBy will delete by a given property
 func DeleteBy(column, operator, value string) DeleteCriteria {
 	return func(q *bun.DeleteQuery) *bun.DeleteQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), value)
 	}
 }
 
 // DeleteByTimetz will format the time provided
 func DeleteByTimetz(column, operator string, value time.Time) DeleteCriteria {
 	return func(q *bun.DeleteQuery) *bun.DeleteQuery {
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), ts)
 	}
 }
 

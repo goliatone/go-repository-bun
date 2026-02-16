@@ -22,15 +22,25 @@ func UpdateByPK(cols ...string) UpdateCriteria {
 // id = 23 or id <= 23
 func UpdateBy(column, operator, value string) UpdateCriteria {
 	return func(q *bun.UpdateQuery) *bun.UpdateQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), value)
 	}
 }
 
 // UpdateByTimetz will take a time value and format for postgres
 func UpdateByTimetz(column, operator string, value time.Time) UpdateCriteria {
 	return func(q *bun.UpdateQuery) *bun.UpdateQuery {
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), ts)
 	}
 }
 
@@ -40,22 +50,36 @@ func UpdateMaybeByTimetz(column, operator string, value *time.Time) UpdateCriter
 		if value == nil || value.IsZero() {
 			return q
 		}
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), ts)
 	}
 }
 
 // UpdateOrBy OR selector
 func UpdateOrBy(column, operator, value string) UpdateCriteria {
 	return func(q *bun.UpdateQuery) *bun.UpdateQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q
+		}
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", col, op), value)
 	}
 }
 
 // UpdateOrIsNull OR IS NULL
 func UpdateOrIsNull(column string) UpdateCriteria {
 	return func(q *bun.UpdateQuery) *bun.UpdateQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", column))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q
+		}
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", col))
 	}
 }
 

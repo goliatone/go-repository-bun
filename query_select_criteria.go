@@ -56,7 +56,13 @@ func defaultSubqueryAlias(subq *bun.SelectQuery) string {
 
 func SelectColumnCompare(col1, operator, col2 string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Where(fmt.Sprintf("?TableAlias.%s %s ?TableAlias.%s", col1, operator, col2))
+		left, leftOK := normalizeSQLIdentifier(col1)
+		right, rightOK := normalizeSQLIdentifier(col2)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !leftOK || !rightOK || !opOK {
+			return sq.Where("1=0")
+		}
+		return sq.Where(fmt.Sprintf("?TableAlias.%s %s ?TableAlias.%s", left, op, right))
 	}
 }
 
@@ -103,15 +109,25 @@ func ExcludeColumns(columns ...string) SelectCriteria {
 // id = 23 or id <= 23
 func SelectBy(column, operator, value string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), value)
 	}
 }
 
 // SelectByTimetz will take a time value and format for postgres
 func SelectByTimetz(column, operator string, value time.Time) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), ts)
 	}
 }
 
@@ -121,50 +137,85 @@ func SelectMaybeByTimetz(column, operator string, value *time.Time) SelectCriter
 		if value == nil || value.IsZero() {
 			return q
 		}
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q.Where("1=0")
+		}
 		ts := value.Format(time.RFC3339)
-		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), ts)
+		return q.Where(fmt.Sprintf("?TableAlias.%s %s ?", col, op), ts)
 	}
 }
 
 // SelectOrBy OR selector
 func SelectOrBy(column, operator, value string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", column, operator), value)
+		col, colOK := normalizeSQLIdentifier(column)
+		op, opOK := normalizeComparisonOperator(operator)
+		if !colOK || !opOK {
+			return q
+		}
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s %s ?", col, op), value)
 	}
 }
 
 // OrderBy expression
 func OrderBy(expression ...string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Order(expression...)
+		var safe []string
+		for _, expr := range expression {
+			if normalized, ok := normalizeOrderExpr(expr); ok {
+				safe = append(safe, normalized)
+			}
+		}
+		if len(safe) == 0 {
+			return q
+		}
+		return q.Order(safe...)
 	}
 }
 
 // SelectIsNull IS NULL
 func SelectIsNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s IS NULL", column))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NULL", col))
 	}
 }
 
 // SelectOrIsNull OR IS NULL
 func SelectOrIsNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", column))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q
+		}
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NULL", col))
 	}
 }
 
 // SelectNotNull adds IS NOT NULL
 func SelectNotNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s IS NOT NULL", column))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s IS NOT NULL", col))
 	}
 }
 
 // SelectNotNull adds IS NOT NULL
 func SelectOrNotNull(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NOT NULL", column))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q
+		}
+		return q.WhereOr(fmt.Sprintf("?TableAlias.%s IS NOT NULL", col))
 	}
 }
 
@@ -190,14 +241,22 @@ func SelectDeletedAlso() SelectCriteria {
 // SelectOrderDesc sort by column
 func SelectOrderDesc(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Order(fmt.Sprintf("%s %s", column, "DESC"))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q
+		}
+		return q.Order(fmt.Sprintf("%s %s", col, "DESC"))
 	}
 }
 
 // SelectOrderAsc sort by column
 func SelectOrderAsc(column string) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Order(fmt.Sprintf("%s %s", column, "ASC"))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q
+		}
+		return q.Order(fmt.Sprintf("%s %s", col, "ASC"))
 	}
 }
 
@@ -208,8 +267,11 @@ func SelectColumnIn[T any](column string, slice []T) SelectCriteria {
 		if len(slice) == 0 {
 			return q
 		}
-		// fmt.Sprintf("?TableAlias.%s
-		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.In(slice))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", col), bun.In(slice))
 	}
 }
 
@@ -220,14 +282,23 @@ func SelectColumnNotIn[T any](column string, slice []T) SelectCriteria {
 		if len(slice) == 0 {
 			return q
 		}
-		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.In(slice))
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", col), bun.In(slice))
 	}
 }
 
 // SelectColumnInSubq will make an array select
 func SelectColumnInSubq(column string, query string, args ...any) SelectCriteria {
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", column), bun.SafeQuery(query, args...))
+		col, colOK := normalizeSQLIdentifier(column)
+		subq, subqOK := normalizeSubquery(query)
+		if !colOK || !subqOK {
+			return q.Where("1=0")
+		}
+		return q.Where(fmt.Sprintf("?TableAlias.%s IN (?)", col), bun.SafeQuery(subq, args...))
 	}
 }
 
@@ -240,12 +311,13 @@ func SelectColumnInSubq(column string, query string, args ...any) SelectCriteria
 //				WHERE email is NOT NULL
 //	  )
 func SelectColumnNotInSubq(column string, query string, args ...any) SelectCriteria {
-	trimmed := strings.TrimSpace(query)
+	trimmed, queryOK := normalizeSubquery(query)
 	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		if trimmed == "" {
-			return q
+		col, colOK := normalizeSQLIdentifier(column)
+		if !colOK || !queryOK {
+			return q.Where("1=0")
 		}
-		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", column), bun.SafeQuery(trimmed, args...))
+		return q.Where(fmt.Sprintf("?TableAlias.%s NOT IN (?)", col), bun.SafeQuery(trimmed, args...))
 	}
 }
 
@@ -255,13 +327,31 @@ func SelectDistinct(columns ...string) SelectCriteria {
 		if len(columns) == 0 {
 			return sq.Distinct()
 		}
-		return sq.DistinctOn(strings.Join(columns, ", "))
+		safe := make([]string, 0, len(columns))
+		for _, column := range columns {
+			if normalized, ok := normalizeSQLIdentifier(column); ok {
+				safe = append(safe, normalized)
+			}
+		}
+		if len(safe) == 0 {
+			return sq.Distinct()
+		}
+		return sq.DistinctOn(strings.Join(safe, ", "))
 	}
 }
 
 func SelectGroupBy(columns ...string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Group(columns...)
+		safe := make([]string, 0, len(columns))
+		for _, column := range columns {
+			if normalized, ok := normalizeSQLIdentifier(column); ok {
+				safe = append(safe, normalized)
+			}
+		}
+		if len(safe) == 0 {
+			return sq
+		}
+		return sq.Group(safe...)
 	}
 }
 
@@ -273,25 +363,41 @@ func SelectHaving(expr string, args ...any) SelectCriteria {
 
 func SelectBetween(column string, start, end any) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Where(fmt.Sprintf("?TableAlias.%s BETWEEN ? AND ?", column), start, end)
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return sq.Where("1=0")
+		}
+		return sq.Where(fmt.Sprintf("?TableAlias.%s BETWEEN ? AND ?", col), start, end)
 	}
 }
 
 func SelectTimeRange(column string, start, end time.Time) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Where(fmt.Sprintf("?TableAlias.%s >= ? AND ?TableAlias.%s <= ?", column, column), start, end)
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return sq.Where("1=0")
+		}
+		return sq.Where(fmt.Sprintf("?TableAlias.%s >= ? AND ?TableAlias.%s <= ?", col, col), start, end)
 	}
 }
 
 func SelectILike(column, pattern string) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
-		return sq.Where(fmt.Sprintf("?TableAlias.%s ILIKE ?", column), pattern)
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return sq.Where("1=0")
+		}
+		return sq.Where(fmt.Sprintf("?TableAlias.%s ILIKE ?", col), pattern)
 	}
 }
 
 func SelectJSONContains(column string, jsonVal any) SelectCriteria {
 	return func(sq *bun.SelectQuery) *bun.SelectQuery {
+		col, ok := normalizeSQLIdentifier(column)
+		if !ok {
+			return sq.Where("1=0")
+		}
 		// TODO: This is Postgres specific, how to generalize?
-		return sq.Where(fmt.Sprintf("?TableAlias.%s @> ?", column), jsonVal)
+		return sq.Where(fmt.Sprintf("?TableAlias.%s @> ?", col), jsonVal)
 	}
 }

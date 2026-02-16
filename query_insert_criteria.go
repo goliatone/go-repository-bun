@@ -22,7 +22,16 @@ func InsertOnConflictIgnore() InsertCriteria {
 
 func InsertOnConflictUpdate(cols ...string) InsertCriteria {
 	return func(iq *bun.InsertQuery) *bun.InsertQuery {
-		return iq.On(fmt.Sprintf("CONFLICT (%s) DO UPDATE", strings.Join(cols, ",")))
+		safe := make([]string, 0, len(cols))
+		for _, col := range cols {
+			if normalized, ok := normalizeSQLIdentifier(col); ok {
+				safe = append(safe, normalized)
+			}
+		}
+		if len(safe) == 0 {
+			return iq
+		}
+		return iq.On(fmt.Sprintf("CONFLICT (%s) DO UPDATE", strings.Join(safe, ",")))
 	}
 }
 

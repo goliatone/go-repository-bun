@@ -4,6 +4,20 @@
 
 ## <!-- 16 -->➕ Add
 
+- Record lookup rsolver ([8d9e049](https://github.com/goliatone/go-repository-bun/commit/8d9e049dbd47e783e9a0c46774a69fb02b1c1b0e))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([bc66eaa](https://github.com/goliatone/go-repository-bun/commit/bc66eaa546b5d504ec686956a866b37852795b77))  - (goliatone)
+
+# [0.14.0](https://github.com/goliatone/go-repository-bun/compare/v0.13.0...v0.14.0) - (2026-02-13)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.14.0 ([9f84c7e](https://github.com/goliatone/go-repository-bun/commit/9f84c7ed76b02fc6ac795390b8043f81362547a0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Preserve old values ([2a98671](https://github.com/goliatone/go-repository-bun/commit/2a986716e052a57debe2f2529653d058542ae88a))  - (goliatone)
 - Repo options to control limit, offset values ([bb08476](https://github.com/goliatone/go-repository-bun/commit/bb08476fc7b80e485828198911bca754386f56e3))  - (goliatone)
 - Repo options ([7512311](https://github.com/goliatone/go-repository-bun/commit/7512311ea01f1ffb0f85257ae39b7cd6a8876cc2))  - (goliatone)

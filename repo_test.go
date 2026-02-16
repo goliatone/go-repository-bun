@@ -82,6 +82,21 @@ func newTestUserRepositoryWithConfig(db *bun.DB, dbOpts []Option, repoOpts ...Re
 	return MustNewRepositoryWithConfig[*TestUser](db, handlers, dbOpts, repoOpts...)
 }
 
+func newTestUserRepositoryWithoutIdentifierWithConfig(db *bun.DB, dbOpts []Option, repoOpts ...RepoOption) Repository[*TestUser] {
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser {
+			return &TestUser{}
+		},
+		GetID: func(record *TestUser) uuid.UUID {
+			return record.ID
+		},
+		SetID: func(record *TestUser, id uuid.UUID) {
+			record.ID = id
+		},
+	}
+	return MustNewRepositoryWithConfig[*TestUser](db, handlers, dbOpts, repoOpts...)
+}
+
 func newTestCompanyRepository(db *bun.DB) Repository[*TestCompany] {
 	handlers := ModelHandlers[*TestCompany]{
 		NewRecord: func() *TestCompany {
@@ -998,6 +1013,622 @@ func TestRepository_GetOrCreate_UsesIdentifierWhenIDMissing(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, existing.ID, found.ID)
 	assert.Equal(t, "Existing Company", found.Name)
+}
+
+func TestRepository_Upsert_UsesRecordLookupResolverWhenIDAndIdentifierMissing(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("company_id", "=", record.CompanyID.String()),
+			SelectBy("name", "=", record.Name),
+		}
+	}))
+
+	existing := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Composite User",
+		Email:     "composite.old@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	existing, err := userRepo.CreateTx(ctx, db, existing)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		Name:      existing.Name,
+		Email:     "composite.new@example.com",
+		CompanyID: existing.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	upserted, err := userRepo.Upsert(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, existing.ID, upserted.ID)
+	assert.Equal(t, payload.Email, upserted.Email)
+}
+
+func TestRepository_GetOrCreate_UsesRecordLookupResolver(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("company_id", "=", record.CompanyID.String()),
+			SelectBy("name", "=", record.Name),
+		}
+	}))
+
+	existing := &TestUser{
+		ID:        uuid.New(),
+		Name:      "GetOrCreate Composite",
+		Email:     "goc.composite.old@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	existing, err := userRepo.CreateTx(ctx, db, existing)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		Name:      existing.Name,
+		Email:     "goc.composite.new@example.com",
+		CompanyID: existing.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	found, err := userRepo.GetOrCreate(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, existing.ID, found.ID)
+	assert.Equal(t, existing.Email, found.Email)
+}
+
+func TestRepository_RecordLookupResolver_PriorityAfterID(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	resolverCalls := 0
+	userRepo := newTestUserRepositoryWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		resolverCalls++
+		return []SelectCriteria{
+			SelectBy("name", "=", "resolver-target"),
+		}
+	}))
+
+	primary := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Primary",
+		Email:     "priority.id.primary@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	primary, err := userRepo.CreateTx(ctx, db, primary)
+	assert.NoError(t, err)
+
+	resolverTarget := &TestUser{
+		ID:        uuid.New(),
+		Name:      "resolver-target",
+		Email:     "priority.id.resolver@example.com",
+		CompanyID: primary.CompanyID,
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	_, err = userRepo.CreateTx(ctx, db, resolverTarget)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		ID:        primary.ID,
+		Name:      "Updated By ID",
+		Email:     "priority.id.updated@example.com",
+		CompanyID: primary.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	upserted, err := userRepo.Upsert(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, primary.ID, upserted.ID)
+	assert.Equal(t, 0, resolverCalls)
+}
+
+func TestRepository_RecordLookupResolver_PriorityAfterIdentifier(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	resolverCalls := 0
+	userRepo := newTestUserRepositoryWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		resolverCalls++
+		return []SelectCriteria{
+			SelectBy("name", "=", "resolver-target"),
+		}
+	}))
+
+	identifierTarget := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Identifier Target",
+		Email:     "priority.identifier.primary@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	identifierTarget, err := userRepo.CreateTx(ctx, db, identifierTarget)
+	assert.NoError(t, err)
+
+	resolverTarget := &TestUser{
+		ID:        uuid.New(),
+		Name:      "resolver-target",
+		Email:     "priority.identifier.resolver@example.com",
+		CompanyID: identifierTarget.CompanyID,
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	_, err = userRepo.CreateTx(ctx, db, resolverTarget)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		Name:      "Updated By Identifier",
+		Email:     identifierTarget.Email,
+		CompanyID: identifierTarget.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	upserted, err := userRepo.Upsert(ctx, payload)
+	assert.NoError(t, err)
+	assert.Equal(t, identifierTarget.ID, upserted.ID)
+	assert.Equal(t, 0, resolverCalls)
+}
+
+func TestRepository_RecordLookupResolver_EmptyCriteriaIsNoOp(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		return nil
+	}))
+
+	existing := &TestUser{
+		ID:        uuid.New(),
+		Name:      "NoOp User",
+		Email:     "noop.existing@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	existing, err := userRepo.CreateTx(ctx, db, existing)
+	assert.NoError(t, err)
+
+	payload := &TestUser{
+		Name:      existing.Name,
+		Email:     "noop.created@example.com",
+		CompanyID: existing.CompanyID,
+		UpdatedAt: time.Now(),
+	}
+
+	upserted, err := userRepo.Upsert(ctx, payload)
+	assert.NoError(t, err)
+	assert.NotEqual(t, existing.ID, upserted.ID)
+
+	records, _, err := userRepo.List(ctx,
+		SelectBy("company_id", "=", existing.CompanyID.String()),
+		SelectBy("name", "=", existing.Name),
+	)
+	assert.NoError(t, err)
+	assert.Len(t, records, 2)
+}
+
+func TestRepository_RecordLookupResolver_ErrorPropagation(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		return []SelectCriteria{
+			SelectBy("column_that_does_not_exist", "=", "value"),
+		}
+	}))
+
+	_, err := userRepo.Upsert(ctx, &TestUser{
+		Name:      "Resolver Error User",
+		Email:     "resolver.error@example.com",
+		CompanyID: uuid.New(),
+		UpdatedAt: time.Now(),
+	})
+	assert.Error(t, err)
+	assert.False(t, IsRecordNotFound(err))
+	assert.True(t, goerrors.IsCategory(err, CategoryDatabase))
+}
+
+func TestRepository_RecordLookupResolver_DeterministicSelection(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("company_id", "=", record.CompanyID.String()),
+		}
+	}))
+
+	companyID := uuid.New()
+	lowID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	highID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	low := &TestUser{
+		ID:        lowID,
+		Name:      "Low ID",
+		Email:     "deterministic.low@example.com",
+		CompanyID: companyID,
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		UpdatedAt: time.Now().Add(-2 * time.Hour),
+	}
+	high := &TestUser{
+		ID:        highID,
+		Name:      "High ID",
+		Email:     "deterministic.high@example.com",
+		CompanyID: companyID,
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	_, err := userRepo.CreateTx(ctx, db, high)
+	assert.NoError(t, err)
+	_, err = userRepo.CreateTx(ctx, db, low)
+	assert.NoError(t, err)
+
+	mark := time.Now()
+	upserted, err := userRepo.Upsert(ctx, &TestUser{
+		Name:      "Deterministically Updated",
+		CompanyID: companyID,
+		UpdatedAt: mark,
+	}, UpdateColumns("name", "updated_at"))
+	assert.NoError(t, err)
+	assert.Equal(t, lowID, upserted.ID)
+
+	lowReloaded, err := userRepo.GetByID(ctx, lowID.String())
+	assert.NoError(t, err)
+	highReloaded, err := userRepo.GetByID(ctx, highID.String())
+	assert.NoError(t, err)
+	assert.Equal(t, "Deterministically Updated", lowReloaded.Name)
+	assert.Equal(t, "High ID", highReloaded.Name)
+}
+
+func TestRepository_GetOrCreate_ResolverUsedOnDuplicateRetryPath(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("email", "=", record.Email),
+		}
+	}))
+	repoImpl := userRepo.(*repo[*TestUser])
+	repoImpl.resetScopes()
+
+	const blockerScope = "resolver-insert-blocker"
+	repoImpl.RegisterScope(blockerScope, ScopeDefinition{
+		Insert: func(ctx context.Context) []InsertCriteria {
+			val, ok := ScopeData(ctx, blockerScope)
+			if !ok {
+				return nil
+			}
+			blocker, ok := val.(*insertBlocker)
+			if !ok || blocker == nil {
+				return nil
+			}
+			return []InsertCriteria{
+				func(q *bun.InsertQuery) *bun.InsertQuery {
+					blocker.ready <- struct{}{}
+					<-blocker.proceed
+					return q
+				},
+			}
+		},
+	})
+	assert.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
+		Insert: []string{blockerScope},
+	}))
+
+	blocker := &insertBlocker{
+		ready:   make(chan struct{}, 1),
+		proceed: make(chan struct{}, 1),
+	}
+	scopeCtx := WithScopeData(ctx, blockerScope, blocker)
+
+	now := time.Now()
+	record := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Resolver Retry",
+		Email:     "resolver.retry@example.com",
+		CompanyID: uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	var (
+		result  *TestUser
+		callErr error
+		wg      sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		res, err := userRepo.GetOrCreateTx(scopeCtx, db, record)
+		result = res
+		callErr = err
+	}()
+
+	<-blocker.ready
+
+	manual := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Manual Insert",
+		Email:     record.Email,
+		CompanyID: record.CompanyID,
+		CreatedAt: now.Add(1 * time.Millisecond),
+		UpdatedAt: now.Add(1 * time.Millisecond),
+	}
+	_, err := userRepo.CreateTx(ctx, db, manual)
+	assert.NoError(t, err)
+
+	blocker.proceed <- struct{}{}
+	wg.Wait()
+
+	assert.NoError(t, callErr)
+	if assert.NotNil(t, result) {
+		assert.Equal(t, manual.ID, result.ID)
+		assert.Equal(t, manual.Email, result.Email)
+	}
+}
+
+func TestRepository_UpsertMany_UsesRecordLookupResolver(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("company_id", "=", record.CompanyID.String()),
+			SelectBy("name", "=", record.Name),
+		}
+	}))
+
+	companyID := uuid.New()
+	first := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Batch User A",
+		Email:     "batch.a.old@example.com",
+		CompanyID: companyID,
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		UpdatedAt: time.Now().Add(-2 * time.Hour),
+	}
+	second := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Batch User B",
+		Email:     "batch.b.old@example.com",
+		CompanyID: companyID,
+		CreatedAt: time.Now().Add(-2 * time.Hour),
+		UpdatedAt: time.Now().Add(-2 * time.Hour),
+	}
+	_, err := userRepo.CreateTx(ctx, db, first)
+	assert.NoError(t, err)
+	_, err = userRepo.CreateTx(ctx, db, second)
+	assert.NoError(t, err)
+
+	now := time.Now()
+	payload := []*TestUser{
+		{
+			Name:      first.Name,
+			CompanyID: first.CompanyID,
+			UpdatedAt: now,
+		},
+		{
+			Name:      second.Name,
+			CompanyID: second.CompanyID,
+			UpdatedAt: now,
+		},
+	}
+
+	records, err := userRepo.UpsertMany(ctx, payload, UpdateColumns("updated_at"))
+	assert.NoError(t, err)
+	assert.Len(t, records, 2)
+	assert.Equal(t, first.ID, records[0].ID)
+	assert.Equal(t, second.ID, records[1].ID)
+}
+
+func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	companyRepo := newTestCompanyRepository(db)
+	userRepo := newTestUserRepositoryWithoutIdentifierWithConfig(db, nil, WithRecordLookupResolver(func(record *TestUser) []SelectCriteria {
+		if record == nil {
+			return nil
+		}
+		return []SelectCriteria{
+			SelectBy("name", "=", record.Name),
+		}
+	}))
+	userRepo.(*repo[*TestUser]).resetScopes()
+
+	const tenantScope = "tenant"
+	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
+	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+		Select: []string{tenantScope},
+	}))
+
+	tenantCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Tenant Co",
+		Identifier: "tenant-co-resolver-scope",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	otherCompany := &TestCompany{
+		ID:         uuid.New(),
+		Name:       "Other Co",
+		Identifier: "other-co-resolver-scope",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
+	assert.NoError(t, err)
+	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
+	assert.NoError(t, err)
+
+	tenantUser := &TestUser{
+		ID:        uuid.New(),
+		Name:      "Scoped Resolver Name",
+		Email:     "scope.tenant@example.com",
+		CompanyID: tenantCompany.ID,
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	otherUser := &TestUser{
+		ID:        uuid.New(),
+		Name:      tenantUser.Name,
+		Email:     "scope.other@example.com",
+		CompanyID: otherCompany.ID,
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	_, err = userRepo.CreateTx(ctx, db, tenantUser)
+	assert.NoError(t, err)
+	_, err = userRepo.CreateTx(ctx, db, otherUser)
+	assert.NoError(t, err)
+
+	updatedAt := time.Now()
+	scopeCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
+	upserted, err := userRepo.Upsert(scopeCtx, &TestUser{
+		Name:      tenantUser.Name,
+		CompanyID: tenantCompany.ID,
+		UpdatedAt: updatedAt,
+	}, UpdateColumns("updated_at"))
+	assert.NoError(t, err)
+	assert.Equal(t, tenantUser.ID, upserted.ID)
+
+	reloadedTenant, err := userRepo.GetByID(ctx, tenantUser.ID.String())
+	assert.NoError(t, err)
+	reloadedOther, err := userRepo.GetByID(ctx, otherUser.ID.String())
+	assert.NoError(t, err)
+
+	assert.True(t, reloadedTenant.UpdatedAt.Equal(updatedAt))
+	assert.False(t, reloadedOther.UpdatedAt.Equal(updatedAt))
+}
+
+func TestRepository_WithRecordLookupResolver_TypeMismatchValidation(t *testing.T) {
+	setupTestData(t)
+
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser {
+			return &TestUser{}
+		},
+		GetID: func(record *TestUser) uuid.UUID {
+			return record.ID
+		},
+		SetID: func(record *TestUser, id uuid.UUID) {
+			record.ID = id
+		},
+		GetIdentifier: func() string {
+			return "email"
+		},
+		GetIdentifierValue: func(record *TestUser) string {
+			return record.Email
+		},
+	}
+
+	mismatched := NewRepositoryWithConfig[*TestUser](db, handlers, nil, WithRecordLookupResolver(func(record *TestCompany) []SelectCriteria {
+		return []SelectCriteria{SelectBy("identifier", "=", record.Identifier)}
+	}))
+
+	validator, ok := mismatched.(Validator)
+	if !assert.True(t, ok) {
+		return
+	}
+
+	err := validator.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "resolver type mismatch")
+
+	validationErrors, hasValidationErrors := goerrors.GetValidationErrors(err)
+	assert.True(t, hasValidationErrors)
+	assert.NotEmpty(t, validationErrors)
+}
+
+func TestRepository_WithRecordLookupResolver_TypeMismatchFailsOperations(t *testing.T) {
+	setupTestData(t)
+
+	ctx := context.Background()
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser {
+			return &TestUser{}
+		},
+		GetID: func(record *TestUser) uuid.UUID {
+			return record.ID
+		},
+		SetID: func(record *TestUser, id uuid.UUID) {
+			record.ID = id
+		},
+		GetIdentifier: func() string {
+			return "email"
+		},
+		GetIdentifierValue: func(record *TestUser) string {
+			return record.Email
+		},
+	}
+
+	userRepo := NewRepositoryWithConfig[*TestUser](db, handlers, nil, WithRecordLookupResolver(func(record *TestCompany) []SelectCriteria {
+		return []SelectCriteria{SelectBy("identifier", "=", record.Identifier)}
+	}))
+
+	_, err := userRepo.Upsert(ctx, &TestUser{
+		Name:      "Mismatch",
+		Email:     "mismatch@example.com",
+		CompanyID: uuid.New(),
+		UpdatedAt: time.Now(),
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "resolver type mismatch")
+}
+
+func TestRepository_MustNewRepositoryWithConfig_RecordLookupResolverTypeMismatchPanics(t *testing.T) {
+	setupTestData(t)
+
+	handlers := ModelHandlers[*TestUser]{
+		NewRecord: func() *TestUser {
+			return &TestUser{}
+		},
+		GetID: func(record *TestUser) uuid.UUID {
+			return record.ID
+		},
+		SetID: func(record *TestUser, id uuid.UUID) {
+			record.ID = id
+		},
+		GetIdentifier: func() string {
+			return "email"
+		},
+		GetIdentifierValue: func(record *TestUser) string {
+			return record.Email
+		},
+	}
+
+	assert.Panics(t, func() {
+		MustNewRepositoryWithConfig[*TestUser](db, handlers, nil, WithRecordLookupResolver(func(record *TestCompany) []SelectCriteria {
+			return []SelectCriteria{SelectBy("identifier", "=", record.Identifier)}
+		}))
+	})
 }
 
 func TestRepository_List(t *testing.T) {

@@ -1,5 +1,30 @@
 # Changelog
 
+# [unreleased]
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Sql input hardening for validation and safe fallbacks ([3d604ea](https://github.com/goliatone/go-repository-bun/commit/3d604ead3eceec419fb354e103e743124b5a920b))  - (goliatone)
+- Remove dead code ([ff87276](https://github.com/goliatone/go-repository-bun/commit/ff87276abc12cbddf84c36aed7bcd062912d68fa))  - (goliatone)
+- Scope fail closed by default ([5da720a](https://github.com/goliatone/go-repository-bun/commit/5da720a8eb1678832eb08c02464a40bf5f7c1da2))  - (goliatone)
+- Numberic overvoew conversion in map patching ([543dbca](https://github.com/goliatone/go-repository-bun/commit/543dbca5c92eba53cbf944e23763a192b689acb7))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Full table delte protection by default, with opt in ([c10346f](https://github.com/goliatone/go-repository-bun/commit/c10346f37bd9db291df1c2dd0882bc2b4183e4eb))  - (goliatone)
+- Query safety ([30a891d](https://github.com/goliatone/go-repository-bun/commit/30a891d5fea72267ad38dddfed16154134c50376))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([3421ae0](https://github.com/goliatone/go-repository-bun/commit/3421ae0210b7160e376fab0690600ea8424ca3ce))  - (goliatone)
+- Update test ([9bafd74](https://github.com/goliatone/go-repository-bun/commit/9bafd74717017fc6858e10dfe8a17c9964003738))  - (goliatone)
+
+# [0.15.0](https://github.com/goliatone/go-repository-bun/compare/v0.14.1...v0.15.0) - (2026-02-16)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.15.0 ([cdd29ff](https://github.com/goliatone/go-repository-bun/commit/cdd29ff2e9c1e7cb521f73b48c62199459a0d8f9))  - (goliatone)
+
 # [0.14.1](https://github.com/goliatone/go-repository-bun/compare/v0.14.0...v0.14.1) - (2026-02-16)
 
 ## <!-- 12 -->🔖 Releases

@@ -263,6 +263,35 @@ When scope data is missing or empty, `ScopeByField`/`ScopeByFieldRequired` add a
 
 If you need to propagate the active scope set into other infrastructure (for example, cache decorators), use `repository.ResolveScopeState(ctx, defaults, repository.ScopeOperationSelect)` together with `repository.ScopeDataSnapshot(ctx)` to build deterministic signatures.
 
+For repositories that need explicit tenant/org predicates instead of registered
+context scopes, use the lower-level scope helpers:
+
+```go
+expr, args, ok := repository.ScopeWhere(
+	repository.ScopeColumns{Tenant: "cf.tenant_id", Org: "cf.org_id"},
+	repository.ScopeValues{TenantID: tenantID, OrgID: orgID},
+	repository.ScopeExact,
+)
+if ok {
+	query = query.Where(expr, args...)
+}
+```
+
+Supported modes are:
+
+- `ScopeExact`: match the provided tenant/org exactly and fail closed when a
+  configured column has no value.
+- `ScopeGlobal`: match blank/global rows only.
+- `ScopeExactOrGlobal`: match exact rows or blank/global rows where explicitly
+  allowed by the caller.
+
+`SelectScope`, `UpdateScope`, and `DeleteScope` apply the generated predicates
+directly to Bun queries. `DefaultScope(record, values)` and
+`DefaultScopeMap(values, scope)` fill missing tenant/org values on scoped
+records or metadata maps before persistence. These helpers are app-agnostic:
+the caller decides whether single-tenant defaults, multi-tenant actor claims, or
+global fallback are allowed.
+
 ### Query Criteria
 
 ```go

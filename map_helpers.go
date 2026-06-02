@@ -498,7 +498,7 @@ func collectMapFieldBindings(typ reflect.Type, prefix []int) ([]mapFieldBinding,
 
 		if shouldInlineMapField(field) {
 			inlineType := field.Type
-			if inlineType.Kind() == reflect.Ptr {
+			if inlineType.Kind() == reflect.Pointer {
 				inlineType = inlineType.Elem()
 			}
 			nested, err := collectMapFieldBindings(inlineType, index)
@@ -622,7 +622,7 @@ func readStructValue(entity any) (reflect.Value, error) {
 		return reflect.Value{}, fmt.Errorf("repository: nil entity")
 	}
 
-	for value.Kind() == reflect.Ptr {
+	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return reflect.Value{}, fmt.Errorf("repository: nil entity pointer")
 		}
@@ -642,7 +642,7 @@ func mutableStructValue[T any](record T) (reflect.Value, func() T, error) {
 		return reflect.Value{}, nil, fmt.Errorf("repository: invalid record")
 	}
 
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			value = reflect.New(value.Type().Elem())
 		}
@@ -670,7 +670,7 @@ func mutableStructValue[T any](record T) (reflect.Value, func() T, error) {
 func fieldByIndexForRead(structValue reflect.Value, index []int) (reflect.Value, bool) {
 	current := structValue
 	for _, idx := range index {
-		if current.Kind() == reflect.Ptr {
+		if current.Kind() == reflect.Pointer {
 			if current.IsNil() {
 				return reflect.Value{}, false
 			}
@@ -687,7 +687,7 @@ func fieldByIndexForRead(structValue reflect.Value, index []int) (reflect.Value,
 func fieldByIndexForWrite(structValue reflect.Value, index []int) (reflect.Value, error) {
 	current := structValue
 	for _, idx := range index {
-		if current.Kind() == reflect.Ptr {
+		if current.Kind() == reflect.Pointer {
 			if current.IsNil() {
 				current.Set(reflect.New(current.Type().Elem()))
 			}
@@ -708,7 +708,7 @@ func projectedFieldValue(value reflect.Value, includeNilPointers bool) (any, boo
 	if !value.IsValid() {
 		return nil, false
 	}
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			if includeNilPointers {
 				return nil, true
@@ -730,14 +730,14 @@ func assignValue(dst reflect.Value, src any) error {
 		return nil
 	}
 
-	if dst.Kind() == reflect.Ptr {
+	if dst.Kind() == reflect.Pointer {
 		if dst.IsNil() {
 			dst.Set(reflect.New(dst.Type().Elem()))
 		}
 		return assignValue(dst.Elem(), src)
 	}
 
-	if dst.Type() == reflect.TypeOf(uuid.UUID{}) {
+	if dst.Type() == reflect.TypeFor[uuid.UUID]() {
 		parsed, err := parseUUIDValue(src)
 		if err != nil {
 			return err
@@ -746,7 +746,7 @@ func assignValue(dst reflect.Value, src any) error {
 		return nil
 	}
 
-	if dst.Type() == reflect.TypeOf(time.Time{}) {
+	if dst.Type() == reflect.TypeFor[time.Time]() {
 		parsed, err := parseTimeValue(src)
 		if err != nil {
 			return err
@@ -845,7 +845,7 @@ func parseTimeValue(src any) (time.Time, error) {
 
 func setNilOrZero(dst reflect.Value) {
 	switch dst.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Interface:
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Interface:
 		dst.SetZero()
 	default:
 		dst.Set(reflect.Zero(dst.Type()))
@@ -923,13 +923,13 @@ func shouldInlineMapField(field reflect.StructField) bool {
 		return false
 	}
 	typ := field.Type
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
 		return false
 	}
-	if typ == reflect.TypeOf(time.Time{}) {
+	if typ == reflect.TypeFor[time.Time]() {
 		return false
 	}
 	return true

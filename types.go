@@ -17,8 +17,7 @@ type DBProvider interface {
 	DB() *bun.DB
 }
 
-type SQLExecuter interface {
-}
+type SQLExecuter any
 
 // Validator enables everything is properly
 // configured

@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -101,9 +103,7 @@ func ScopeDataSnapshot(ctx context.Context) map[string]any {
 	}
 
 	snapshot := make(map[string]any, len(cfg.data))
-	for k, v := range cfg.data {
-		snapshot[k] = v
-	}
+	maps.Copy(snapshot, cfg.data)
 	return snapshot
 }
 
@@ -210,9 +210,7 @@ func cloneScopeContextConfig(cfg *scopeContextConfig) *scopeContextConfig {
 
 	if cfg.data != nil {
 		cloned.data = make(map[string]any, len(cfg.data))
-		for k, v := range cfg.data {
-			cloned.data[k] = v
-		}
+		maps.Copy(cloned.data, cfg.data)
 	}
 
 	return cloned
@@ -236,12 +234,7 @@ func withScopeNames(ctx context.Context, names []string, target func(*scopeConte
 }
 
 func containsString(list []string, value string) bool {
-	for _, item := range list {
-		if item == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, value)
 }
 
 func copyStrings(src []string) []string {

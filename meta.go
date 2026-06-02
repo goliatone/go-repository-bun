@@ -2,6 +2,7 @@ package repository
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/uptrace/bun"
@@ -61,7 +62,7 @@ type FieldMeta struct {
 // GenerateModelMeta generates metadata from a model using reflection
 func GenerateModelMeta(model any) ModelMeta {
 	typ := reflect.TypeOf(model)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 
@@ -124,7 +125,7 @@ func getTableName(model any) string {
 	}
 
 	typ := reflect.TypeOf(model)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	return strings.ToLower(typ.Name())
@@ -150,7 +151,7 @@ func getJSONName(jsonTag string, fallback string) string {
 
 func getFieldType(t reflect.Type) string {
 	switch t.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return getFieldType(t.Elem())
 	case reflect.Slice:
 		return "array:" + getFieldType(t.Elem())
@@ -177,10 +178,5 @@ func parseBunTag(field *FieldMeta, tag string) {
 }
 
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }

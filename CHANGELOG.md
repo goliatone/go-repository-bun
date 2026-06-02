@@ -2,12 +2,26 @@
 
 # [unreleased]
 
+## <!-- 16 -->➕ Add
+
+- Global scope management ([a270f98](https://github.com/goliatone/go-repository-bun/commit/a270f98d460fcc5b5ed001ad2043c5a99d283e86))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([43b63e1](https://github.com/goliatone/go-repository-bun/commit/43b63e1831a87f0a626b7e6ad55f30d4c160ab71))  - (goliatone)
+
+# [0.15.1](https://github.com/goliatone/go-repository-bun/compare/v0.15.0...v0.15.1) - (2026-02-16)
+
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Sql input hardening for validation and safe fallbacks ([3d604ea](https://github.com/goliatone/go-repository-bun/commit/3d604ead3eceec419fb354e103e743124b5a920b))  - (goliatone)
 - Remove dead code ([ff87276](https://github.com/goliatone/go-repository-bun/commit/ff87276abc12cbddf84c36aed7bcd062912d68fa))  - (goliatone)
 - Scope fail closed by default ([5da720a](https://github.com/goliatone/go-repository-bun/commit/5da720a8eb1678832eb08c02464a40bf5f7c1da2))  - (goliatone)
 - Numberic overvoew conversion in map patching ([543dbca](https://github.com/goliatone/go-repository-bun/commit/543dbca5c92eba53cbf944e23763a192b689acb7))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.15.1 ([a88397d](https://github.com/goliatone/go-repository-bun/commit/a88397d99b718a9acdac82f8c7af0e4b7b78eb71))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 

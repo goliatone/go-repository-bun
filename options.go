@@ -174,7 +174,10 @@ func getHookRegistryEntry(db *bun.DB) *hookRegistryEntry {
 	}
 
 	if entry, ok := hookRegistry.Load(db); ok {
-		return entry.(*hookRegistryEntry)
+		if typedEntry, ok := entry.(*hookRegistryEntry); ok {
+			return typedEntry
+		}
+		return nil
 	}
 
 	entry := &hookRegistryEntry{
@@ -182,7 +185,10 @@ func getHookRegistryEntry(db *bun.DB) *hookRegistryEntry {
 		handler: LogQueryHookErrorHandler,
 	}
 	actual, _ := hookRegistry.LoadOrStore(db, entry)
-	return actual.(*hookRegistryEntry)
+	if typedEntry, ok := actual.(*hookRegistryEntry); ok {
+		return typedEntry
+	}
+	return nil
 }
 
 func setQueryHookErrorHandler(db *bun.DB, handler QueryHookErrorHandler) {

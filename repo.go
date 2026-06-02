@@ -661,57 +661,78 @@ func (r *repo[T]) findExistingRecord(ctx context.Context, tx bun.IDB, record T) 
 		return zero, false, r.recordLookupResolverErr
 	}
 
-	if r.handlers.GetID != nil {
-		if id := r.handlers.GetID(record); id != uuid.Nil {
-			existing, err := r.GetByIDTx(ctx, tx, id.String())
-			if err == nil {
-				return existing, true, nil
-			}
-			if !IsRecordNotFound(err) {
-				return zero, false, err
-			}
+	if existing, found, err := r.findExistingByID(ctx, tx, record); found || err != nil {
+		return existing, found, err
+	}
+	if existing, found, err := r.findExistingByIdentifier(ctx, tx, record); found || err != nil {
+		return existing, found, err
+	}
+	return r.findExistingByResolver(ctx, tx, record)
+}
+
+func (r *repo[T]) findExistingByID(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
+	var zero T
+	if r.handlers.GetID == nil {
+		return zero, false, nil
+	}
+	id := r.handlers.GetID(record)
+	if id == uuid.Nil {
+		return zero, false, nil
+	}
+	existing, err := r.GetByIDTx(ctx, tx, id.String())
+	return handleExistingLookup(existing, err)
+}
+
+func (r *repo[T]) findExistingByIdentifier(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
+	var zero T
+	if r.handlers.GetIdentifierValue == nil {
+		return zero, false, nil
+	}
+	value := strings.TrimSpace(r.handlers.GetIdentifierValue(record))
+	if value == "" {
+		return zero, false, nil
+	}
+	existing, err := r.GetByIdentifierTx(ctx, tx, value)
+	return handleExistingLookup(existing, err)
+}
+
+func (r *repo[T]) findExistingByResolver(ctx context.Context, tx bun.IDB, record T) (T, bool, error) {
+	var zero T
+	if r.recordLookupResolver == nil {
+		return zero, false, nil
+	}
+	criteria := lookupResolverCriteria(r.recordLookupResolver(record))
+	if len(criteria) == 0 {
+		return zero, false, nil
+	}
+	existing, err := r.GetTx(ctx, tx, criteria...)
+	return handleExistingLookup(existing, err)
+}
+
+func lookupResolverCriteria(customCriteria []SelectCriteria) []SelectCriteria {
+	criteria := make([]SelectCriteria, 0, len(customCriteria)+1)
+	for _, c := range customCriteria {
+		if c != nil {
+			criteria = append(criteria, c)
 		}
 	}
-
-	if r.handlers.GetIdentifierValue != nil {
-		if value := strings.TrimSpace(r.handlers.GetIdentifierValue(record)); value != "" {
-			existing, err := r.GetByIdentifierTx(ctx, tx, value)
-			if err == nil {
-				return existing, true, nil
-			}
-			if !IsRecordNotFound(err) {
-				return zero, false, err
-			}
-		}
+	if len(criteria) == 0 {
+		return nil
 	}
+	// Always append a stable tie-breaker for deterministic row selection
+	// when resolver criteria are not unique.
+	return append(criteria, SelectOrderAsc("id"))
+}
 
-	if r.recordLookupResolver != nil {
-		customCriteria := r.recordLookupResolver(record)
-		if len(customCriteria) > 0 {
-			criteria := make([]SelectCriteria, 0, len(customCriteria)+1)
-			for _, c := range customCriteria {
-				if c == nil {
-					continue
-				}
-				criteria = append(criteria, c)
-			}
-
-			// Always append a stable tie-breaker for deterministic row selection
-			// when resolver criteria are not unique.
-			criteria = append(criteria, SelectOrderAsc("id"))
-			if len(criteria) > 1 { // ensure at least one non-order criteria is present
-				existing, err := r.GetTx(ctx, tx, criteria...)
-				if err == nil {
-					return existing, true, nil
-				}
-				if !IsRecordNotFound(err) {
-					return zero, false, err
-				}
-			}
-		}
+func handleExistingLookup[T any](existing T, err error) (T, bool, error) {
+	var zero T
+	if err == nil {
+		return existing, true, nil
 	}
-
-	return zero, false, nil
+	if IsRecordNotFound(err) {
+		return zero, false, nil
+	}
+	return zero, false, err
 }
 
 func (r *repo[T]) GetOrCreate(ctx context.Context, record T) (T, error) {
@@ -731,21 +752,29 @@ func (r *repo[T]) GetOrCreateTx(ctx context.Context, tx bun.IDB, record T) (T, e
 
 	created, err := r.CreateTx(ctx, tx, record)
 	if err != nil {
-		if IsDuplicatedKey(err) {
-			existing, found, lookupErr := r.findExistingRecord(ctx, tx, record)
-			if lookupErr != nil {
-				var zero T
-				return zero, lookupErr
-			}
-			if found {
-				return existing, nil
-			}
+		if existing, recovered, lookupErr := r.recoverDuplicateCreate(ctx, tx, record, err); recovered || lookupErr != nil {
+			return existing, lookupErr
 		}
 		var zero T
 		return zero, err
 	}
 
 	return created, nil
+}
+
+func (r *repo[T]) recoverDuplicateCreate(ctx context.Context, tx bun.IDB, record T, err error) (T, bool, error) {
+	var zero T
+	if !IsDuplicatedKey(err) {
+		return zero, false, nil
+	}
+	existing, found, lookupErr := r.findExistingRecord(ctx, tx, record)
+	if lookupErr != nil {
+		return zero, false, lookupErr
+	}
+	if found {
+		return existing, true, nil
+	}
+	return zero, false, nil
 }
 
 func (r *repo[T]) GetByIdentifier(ctx context.Context, identifier string, criteria ...SelectCriteria) (T, error) {
@@ -785,25 +814,28 @@ func (r *repo[T]) resolveIdentifierOptions(identifier string) []IdentifierOption
 	}
 
 	if len(options) == 0 {
-		column := "id"
-		if r.handlers.GetIdentifier != nil {
-			if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
-				if _, ok := normalizeSQLIdentifier(col); ok {
-					column = col
-				}
-			}
-		}
-		if _, ok := normalizeSQLIdentifier(column); !ok {
-			column = "id"
-		}
-
-		options = append(options, IdentifierOption{
-			Column: column,
-			Value:  trimmed,
-		})
+		options = append(options, r.defaultIdentifierOption(trimmed))
 	}
 
 	return options
+}
+
+func (r *repo[T]) defaultIdentifierOption(value string) IdentifierOption {
+	column := "id"
+	if r.handlers.GetIdentifier != nil {
+		if col := strings.TrimSpace(r.handlers.GetIdentifier()); col != "" {
+			if _, ok := normalizeSQLIdentifier(col); ok {
+				column = col
+			}
+		}
+	}
+	if _, ok := normalizeSQLIdentifier(column); !ok {
+		column = "id"
+	}
+	return IdentifierOption{
+		Column: column,
+		Value:  value,
+	}
 }
 
 func (r *repo[T]) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...SelectCriteria) (T, error) {
@@ -1219,15 +1251,10 @@ func resolveRecordLookupResolver[T any](cfg *repoConfig) (RecordLookupResolver[T
 		return resolver, nil
 	}
 
-	expected := reflect.TypeFor[T]()
+	expectedName := reflect.TypeFor[T]().String()
 	actual := cfg.recordLookupResolverType
 	if actual == nil {
 		actual = reflect.TypeOf(cfg.recordLookupResolver)
-	}
-
-	expectedName := "<unknown>"
-	if expected != nil {
-		expectedName = expected.String()
 	}
 
 	actualName := "<unknown>"

@@ -296,79 +296,95 @@ func scopeByField(scopeName, field string, required bool) ScopeDefinition {
 		return ScopeDefinition{}
 	}
 
-	valueFor := func(ctx context.Context) (string, bool) {
-		val, ok := ScopeData(ctx, scopeName)
-		if !ok {
-			return "", false
-		}
-
-		switch v := val.(type) {
-		case uuid.UUID:
-			if v == uuid.Nil {
-				return "", false
-			}
-			return v.String(), true
-		case *uuid.UUID:
-			if v == nil || *v == uuid.Nil {
-				return "", false
-			}
-			return v.String(), true
-		case fmt.Stringer:
-			s := strings.TrimSpace(v.String())
-			if s == "" {
-				return "", false
-			}
-			return s, true
-		case string:
-			s := strings.TrimSpace(v)
-			if s == "" {
-				return "", false
-			}
-			return s, true
-		default:
-			return "", false
-		}
-	}
-
 	return ScopeDefinition{
 		Select: func(ctx context.Context) []SelectCriteria {
-			if value, ok := valueFor(ctx); ok {
+			if value, ok := scopeFieldValue(ctx, scopeName); ok {
 				return []SelectCriteria{SelectBy(field, "=", value)}
 			}
 			if required {
-				return []SelectCriteria{
-					func(q *bun.SelectQuery) *bun.SelectQuery {
-						return q.Where("1=0")
-					},
-				}
+				return noMatchSelectCriteria()
 			}
 			return nil
 		},
 		Update: func(ctx context.Context) []UpdateCriteria {
-			if value, ok := valueFor(ctx); ok {
+			if value, ok := scopeFieldValue(ctx, scopeName); ok {
 				return []UpdateCriteria{UpdateBy(field, "=", value)}
 			}
 			if required {
-				return []UpdateCriteria{
-					func(q *bun.UpdateQuery) *bun.UpdateQuery {
-						return q.Where("1=0")
-					},
-				}
+				return noMatchUpdateCriteria()
 			}
 			return nil
 		},
 		Delete: func(ctx context.Context) []DeleteCriteria {
-			if value, ok := valueFor(ctx); ok {
+			if value, ok := scopeFieldValue(ctx, scopeName); ok {
 				return []DeleteCriteria{DeleteBy(field, "=", value)}
 			}
 			if required {
-				return []DeleteCriteria{
-					func(q *bun.DeleteQuery) *bun.DeleteQuery {
-						return q.Where("1=0")
-					},
-				}
+				return noMatchDeleteCriteria()
 			}
 			return nil
+		},
+	}
+}
+
+func scopeFieldValue(ctx context.Context, scopeName string) (string, bool) {
+	val, ok := ScopeData(ctx, scopeName)
+	if !ok {
+		return "", false
+	}
+
+	switch v := val.(type) {
+	case uuid.UUID:
+		return nonNilUUIDString(v)
+	case *uuid.UUID:
+		if v == nil {
+			return "", false
+		}
+		return nonNilUUIDString(*v)
+	case fmt.Stringer:
+		return nonBlankString(v.String())
+	case string:
+		return nonBlankString(v)
+	default:
+		return "", false
+	}
+}
+
+func nonNilUUIDString(value uuid.UUID) (string, bool) {
+	if value == uuid.Nil {
+		return "", false
+	}
+	return value.String(), true
+}
+
+func nonBlankString(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	return trimmed, true
+}
+
+func noMatchSelectCriteria() []SelectCriteria {
+	return []SelectCriteria{
+		func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where("1=0")
+		},
+	}
+}
+
+func noMatchUpdateCriteria() []UpdateCriteria {
+	return []UpdateCriteria{
+		func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.Where("1=0")
+		},
+	}
+}
+
+func noMatchDeleteCriteria() []DeleteCriteria {
+	return []DeleteCriteria{
+		func(q *bun.DeleteQuery) *bun.DeleteQuery {
+			return q.Where("1=0")
 		},
 	}
 }

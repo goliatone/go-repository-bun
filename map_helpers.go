@@ -650,7 +650,11 @@ func mutableStructValue[T any](record T) (reflect.Value, func() T, error) {
 			return reflect.Value{}, nil, fmt.Errorf("repository: expected pointer to struct, got %s", value.Elem().Kind())
 		}
 		finalize := func() T {
-			return value.Interface().(T)
+			if result, ok := value.Interface().(T); ok {
+				return result
+			}
+			var zero T
+			return zero
 		}
 		return value.Elem(), finalize, nil
 	}
@@ -662,7 +666,11 @@ func mutableStructValue[T any](record T) (reflect.Value, func() T, error) {
 	clone := reflect.New(value.Type())
 	clone.Elem().Set(value)
 	finalize := func() T {
-		return clone.Elem().Interface().(T)
+		if result, ok := clone.Elem().Interface().(T); ok {
+			return result
+		}
+		var zero T
+		return zero
 	}
 	return clone.Elem(), finalize, nil
 }
@@ -724,37 +732,45 @@ func assignValue(dst reflect.Value, src any) error {
 	if !dst.CanSet() {
 		return fmt.Errorf("destination is not settable")
 	}
-
 	if src == nil {
 		setNilOrZero(dst)
 		return nil
 	}
-
 	if dst.Kind() == reflect.Pointer {
 		if dst.IsNil() {
 			dst.Set(reflect.New(dst.Type().Elem()))
 		}
 		return assignValue(dst.Elem(), src)
 	}
+	if handled, err := assignKnownValue(dst, src); handled {
+		return err
+	}
+	return assignByKind(dst, src)
+}
 
+func assignKnownValue(dst reflect.Value, src any) (bool, error) {
 	if dst.Type() == reflect.TypeFor[uuid.UUID]() {
 		parsed, err := parseUUIDValue(src)
 		if err != nil {
-			return err
+			return true, err
 		}
 		dst.Set(reflect.ValueOf(parsed))
-		return nil
+		return true, nil
 	}
 
 	if dst.Type() == reflect.TypeFor[time.Time]() {
 		parsed, err := parseTimeValue(src)
 		if err != nil {
-			return err
+			return true, err
 		}
 		dst.Set(reflect.ValueOf(parsed))
-		return nil
+		return true, nil
 	}
 
+	return false, nil
+}
+
+func assignByKind(dst reflect.Value, src any) error {
 	srcValue := reflect.ValueOf(src)
 	switch dst.Kind() {
 	case reflect.String:
@@ -1035,32 +1051,6 @@ func toBool(src any) (bool, error) {
 
 func toInt64(src any) (int64, error) {
 	switch v := src.(type) {
-	case int:
-		return int64(v), nil
-	case int8:
-		return int64(v), nil
-	case int16:
-		return int64(v), nil
-	case int32:
-		return int64(v), nil
-	case int64:
-		return v, nil
-	case uint:
-		if uint64(v) > uint64(math.MaxInt64) {
-			return 0, fmt.Errorf("uint value %d overflows int64", v)
-		}
-		return int64(v), nil
-	case uint8:
-		return int64(v), nil
-	case uint16:
-		return int64(v), nil
-	case uint32:
-		return int64(v), nil
-	case uint64:
-		if v > uint64(math.MaxInt64) {
-			return 0, fmt.Errorf("uint64 value %d overflows int64", v)
-		}
-		return int64(v), nil
 	case float32:
 		return floatToInt64(float64(v))
 	case float64:
@@ -1071,6 +1061,18 @@ func toInt64(src any) (int64, error) {
 			return 0, fmt.Errorf("invalid int value %q", v)
 		}
 		return parsed, nil
+	}
+
+	value := reflect.ValueOf(src)
+	switch value.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return value.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		unsigned := value.Uint()
+		if unsigned > uint64(math.MaxInt64) {
+			return 0, fmt.Errorf("%s value %d overflows int64", value.Kind(), unsigned)
+		}
+		return int64(unsigned), nil
 	default:
 		return 0, fmt.Errorf("unsupported int source type %T", src)
 	}
@@ -1078,41 +1080,6 @@ func toInt64(src any) (int64, error) {
 
 func toUint64(src any) (uint64, error) {
 	switch v := src.(type) {
-	case int:
-		if v < 0 {
-			return 0, fmt.Errorf("int value %d underflows uint64", v)
-		}
-		return uint64(v), nil
-	case int8:
-		if v < 0 {
-			return 0, fmt.Errorf("int8 value %d underflows uint64", v)
-		}
-		return uint64(v), nil
-	case int16:
-		if v < 0 {
-			return 0, fmt.Errorf("int16 value %d underflows uint64", v)
-		}
-		return uint64(v), nil
-	case int32:
-		if v < 0 {
-			return 0, fmt.Errorf("int32 value %d underflows uint64", v)
-		}
-		return uint64(v), nil
-	case int64:
-		if v < 0 {
-			return 0, fmt.Errorf("int64 value %d underflows uint64", v)
-		}
-		return uint64(v), nil
-	case uint:
-		return uint64(v), nil
-	case uint8:
-		return uint64(v), nil
-	case uint16:
-		return uint64(v), nil
-	case uint32:
-		return uint64(v), nil
-	case uint64:
-		return v, nil
 	case float32:
 		return floatToUint64(float64(v))
 	case float64:
@@ -1123,6 +1090,18 @@ func toUint64(src any) (uint64, error) {
 			return 0, fmt.Errorf("invalid uint value %q", v)
 		}
 		return parsed, nil
+	}
+
+	value := reflect.ValueOf(src)
+	switch value.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		signed := value.Int()
+		if signed < 0 {
+			return 0, fmt.Errorf("%s value %d underflows uint64", value.Kind(), signed)
+		}
+		return uint64(signed), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return value.Uint(), nil
 	default:
 		return 0, fmt.Errorf("unsupported uint source type %T", src)
 	}

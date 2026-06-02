@@ -51,3 +51,8 @@ Temporary Items
 
 # Go workspace file
 go.work
+
+# Local quality/test artifacts
+.gocache/
+.tmp/
+coverage.out

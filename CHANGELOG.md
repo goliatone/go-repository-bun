@@ -2,6 +2,23 @@
 
 # [unreleased]
 
+## <!-- 1 -->🐛 Bug Fixes
+
+- Clear remaining lint findings ([62d1261](https://github.com/goliatone/go-repository-bun/commit/62d1261be04bd39b8d0dbe38f8977a18aafa4ebb))  - (goliatone)
+- Code quality ([6d2e213](https://github.com/goliatone/go-repository-bun/commit/6d2e2137e814b2c27c01d13d87b67e2d3abb9222))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Add quality ci baselines ([06f1ed7](https://github.com/goliatone/go-repository-bun/commit/06f1ed795eeb9b1ec24a96bce1956dae700fb0b9))  - (goliatone)
+- Setup linters ([3f4b01c](https://github.com/goliatone/go-repository-bun/commit/3f4b01ce8065afe6f7c52263ab9064dbf72fc68b))  - (goliatone)
+- Update readme ([9a152cf](https://github.com/goliatone/go-repository-bun/commit/9a152cf69bd4d15f5b60f15405641ec2bca444b8))  - (goliatone)
+
+# [0.16.0](https://github.com/goliatone/go-repository-bun/compare/v0.15.1...v0.16.0) - (2026-06-02)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.16.0 ([d6170ae](https://github.com/goliatone/go-repository-bun/commit/d6170aea3c37d9e1b0c1d7d661aef06a31d7a8fc))  - (goliatone)
+
 ## <!-- 16 -->➕ Add
 
 - Global scope management ([a270f98](https://github.com/goliatone/go-repository-bun/commit/a270f98d460fcc5b5ed001ad2043c5a99d283e86))  - (goliatone)

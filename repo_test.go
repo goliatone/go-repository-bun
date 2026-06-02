@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
@@ -127,13 +129,30 @@ func TestMain(m *testing.M) {
 	}
 	sqldb.SetMaxOpenConns(1)
 	sqldb.SetMaxIdleConns(1)
-	defer sqldb.Close()
 
 	db = bun.NewDB(sqldb, sqlitedialect.New())
 
 	code := m.Run()
+	if err := sqldb.Close(); err != nil {
+		panic(err)
+	}
 
 	os.Exit(code)
+}
+
+func requireConcreteRepo[T any](t *testing.T, repository Repository[T]) *repo[T] {
+	t.Helper()
+	concreteRepo, ok := repository.(*repo[T])
+	require.True(t, ok)
+	return concreteRepo
+}
+
+func rollbackTx(t *testing.T, tx bun.Tx) {
+	t.Helper()
+	err := tx.Rollback()
+	if err != nil && !stderrors.Is(err, sql.ErrTxDone) {
+		require.NoError(t, err)
+	}
 }
 
 func TestNewRepositories(t *testing.T) {
@@ -162,7 +181,7 @@ func TestRepository_NewRepositoryWithConfig_NilDBDoesNotPanic(t *testing.T) {
 
 		validator, ok := repo.(Validator)
 		assert.True(t, ok)
-		assert.Error(t, validator.Validate())
+		require.Error(t, validator.Validate())
 	})
 }
 
@@ -173,7 +192,7 @@ func TestRepository_ValidateReturnsValidationErrors(t *testing.T) {
 	}
 
 	err := repo.Validate()
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	validationErrors, ok := goerrors.GetValidationErrors(err)
 	assert.True(t, ok)
@@ -192,7 +211,7 @@ func TestRepository_Create(t *testing.T) {
 		Name: "Test Company",
 	}
 	createdCompany, err := companyRepo.CreateTx(ctx, db, company)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, createdCompany.ID)
 
 	user := &TestUser{
@@ -203,7 +222,7 @@ func TestRepository_Create(t *testing.T) {
 	}
 
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, createdUser.ID)
 	assert.Equal(t, user.Name, createdUser.Name)
 }
@@ -221,11 +240,11 @@ func TestRepository_Get(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Retrieve the user by ID
 	retrievedUser, err := userRepo.GetByIDTx(ctx, db, createdUser.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, createdUser.ID, retrievedUser.ID)
 	assert.Equal(t, createdUser.Name, retrievedUser.Name)
 }
@@ -245,11 +264,11 @@ func TestRepository_GetByIdentifier(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	_, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Retrieve the user by identifier (email)
 	retrievedUser, err := userRepo.GetByIdentifier(ctx, user.Email)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, retrievedUser.ID)
 	assert.Equal(t, user.Name, retrievedUser.Name)
 	assert.Equal(t, user.Email, retrievedUser.Email)
@@ -262,8 +281,8 @@ func TestRepository_GetByIdentifierTx(t *testing.T) {
 	userRepo := newTestUserRepository(db)
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	user := &TestUser{
 		ID:        uuid.New(),
@@ -274,17 +293,17 @@ func TestRepository_GetByIdentifierTx(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	_, err = userRepo.CreateTx(ctx, tx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Retrieve the user by identifier (email) within the same transaction
 	retrievedUser, err := userRepo.GetByIdentifierTx(ctx, tx, user.Email)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, retrievedUser.ID)
 	assert.Equal(t, user.Name, retrievedUser.Name)
 	assert.Equal(t, user.Email, retrievedUser.Email)
 
 	err = tx.Commit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
@@ -296,7 +315,7 @@ func TestRepository_GetByIdentifier_NotFound(t *testing.T) {
 	// Attempt to retrieve a user with a non-existent email should fail
 	nonExistentEmail := "non.existent@example.com"
 	_, err := userRepo.GetByIdentifier(ctx, nonExistentEmail)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, IsRecordNotFound(err))
 }
 
@@ -307,7 +326,7 @@ func TestRepository_GetByIdentifier_EmptyIdentifierReturnsNotFound(t *testing.T)
 	userRepo := newTestUserRepository(db)
 
 	_, err := userRepo.GetByIdentifier(ctx, "   ")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, IsRecordNotFound(err))
 }
 
@@ -317,12 +336,12 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 	ctx := context.Background()
 	companyRepo := newTestCompanyRepository(db)
 	userRepo := newTestUserRepository(db)
-	userRepo.(*repo[*TestUser]).resetScopes()
+	requireConcreteRepo(t, userRepo).resetScopes()
 
 	const tenantScope = "tenant"
 
 	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
-	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+	require.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
 		Select: []string{tenantScope},
 	}))
 
@@ -334,7 +353,7 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	otherCompany := &TestCompany{
 		ID:         uuid.New(),
@@ -344,7 +363,7 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	users := []*TestUser{
 		{
@@ -366,14 +385,14 @@ func TestRepository_Scopes_SelectDefault(t *testing.T) {
 	}
 
 	for _, user := range users {
-		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		_, createErr := userRepo.CreateTx(ctx, db, user)
+		require.NoError(t, createErr)
 	}
 
 	scopedCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
 
 	records, total, err := userRepo.List(scopedCtx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	if assert.Len(t, records, 1) {
 		assert.Equal(t, tenantCompany.ID, records[0].CompanyID)
@@ -386,12 +405,12 @@ func TestRepository_Scopes_SelectDefaultRequiredFailsClosedWithoutData(t *testin
 
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
-	userRepo.(*repo[*TestUser]).resetScopes()
+	requireConcreteRepo(t, userRepo).resetScopes()
 
 	const tenantScope = "tenant"
 
 	userRepo.RegisterScope(tenantScope, ScopeByFieldRequired(tenantScope, "company_id"))
-	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+	require.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
 		Select: []string{tenantScope},
 	}))
 
@@ -404,12 +423,12 @@ func TestRepository_Scopes_SelectDefaultRequiredFailsClosedWithoutData(t *testin
 		UpdatedAt: time.Now(),
 	}
 	_, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	records, total, err := userRepo.List(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 0, total)
-	assert.Len(t, records, 0)
+	assert.Empty(t, records)
 }
 
 func TestRepository_SetScopeDefaults_UnknownScope(t *testing.T) {
@@ -420,7 +439,7 @@ func TestRepository_SetScopeDefaults_UnknownScope(t *testing.T) {
 	err := repo.SetScopeDefaults(ScopeDefaults{
 		Select: []string{"missing"},
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	validationErrors, ok := goerrors.GetValidationErrors(err)
 	assert.True(t, ok)
@@ -435,7 +454,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 	ctx := context.Background()
 	companyRepo := newTestCompanyRepository(db)
 	userRepo := newTestUserRepository(db)
-	userRepo.(*repo[*TestUser]).resetScopes()
+	requireConcreteRepo(t, userRepo).resetScopes()
 
 	const tenantScope = "tenant"
 
@@ -449,7 +468,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	otherCompany := &TestCompany{
 		ID:         uuid.New(),
@@ -459,7 +478,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	user := &TestUser{
 		ID:        uuid.New(),
@@ -471,7 +490,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 	}
 
 	created, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	wrongCtx := WithScopeData(ctx, tenantScope, otherCompany.ID)
 	wrongCtx = WithUpdateScopes(wrongCtx, tenantScope)
@@ -479,11 +498,11 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 	created.Name = "Updated Name"
 	created.UpdatedAt = time.Now()
 	_, err = userRepo.UpdateTx(wrongCtx, db, created)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, IsSQLExpectedCountViolation(err))
 
 	reloaded, err := userRepo.GetByID(ctx, created.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Tenant User", reloaded.Name)
 
 	correctCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
@@ -492,7 +511,7 @@ func TestRepository_Scopes_UpdateRestriction(t *testing.T) {
 	reloaded.Name = "Updated Again"
 	reloaded.UpdatedAt = time.Now()
 	updated, err := userRepo.UpdateTx(correctCtx, db, reloaded)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Updated Again", updated.Name)
 }
 
@@ -512,10 +531,10 @@ func TestRepository_GetByIdentifier_UUIDStringInCustomColumn(t *testing.T) {
 	}
 
 	_, err := companyRepo.CreateTx(ctx, db, company)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	retrievedCompany, err := companyRepo.GetByIdentifier(ctx, identifier)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, company.ID, retrievedCompany.ID)
 	assert.Equal(t, company.Identifier, retrievedCompany.Identifier)
 }
@@ -533,11 +552,11 @@ func TestRepository_Update(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	createdUser.Email = "alice.j@example.com"
 	updatedUser, err := userRepo.UpdateTx(ctx, db, createdUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "alice.j@example.com", updatedUser.Email)
 }
 
@@ -554,7 +573,7 @@ func TestRepository_Update2(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID.String(), createdUser.ID.String())
 
 	payload := &TestUser{}
@@ -562,11 +581,11 @@ func TestRepository_Update2(t *testing.T) {
 	payload.Email = "alice.j@example.com"
 	payload.UpdatedAt = time.Now()
 	updatedUser, err := userRepo.UpdateTx(ctx, db, payload, UpdateByID(user.ID.String()), UpdateColumns("email", "updated_at"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "alice.j@example.com", updatedUser.Email)
 
 	reloaded, err := userRepo.GetByID(ctx, user.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.Name, reloaded.Name, "expected other fields to remain unchanged")
 }
 
@@ -583,17 +602,17 @@ func TestRepository_Update_AllowsZeroValues(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	created, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	created.Name = ""
 	created.UpdatedAt = time.Now()
 
 	updated, err := userRepo.UpdateTx(ctx, db, created)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	reloaded, err := userRepo.GetByID(ctx, updated.ID.String())
-	assert.NoError(t, err)
-	assert.Equal(t, "", reloaded.Name, "expected zero value to persist after update")
+	require.NoError(t, err)
+	assert.Empty(t, reloaded.Name, "expected zero value to persist after update")
 }
 
 func TestRepository_Update_SkipZeroValuesCriterion(t *testing.T) {
@@ -609,7 +628,7 @@ func TestRepository_Update_SkipZeroValuesCriterion(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	created, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{}
 	userRepo.Handlers().SetID(payload, created.ID)
@@ -618,10 +637,10 @@ func TestRepository_Update_SkipZeroValuesCriterion(t *testing.T) {
 	payload.UpdatedAt = time.Now()
 
 	_, err = userRepo.UpdateTx(ctx, db, payload, UpdateByID(created.ID.String()), UpdateSkipZeroValues())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	reloaded, err := userRepo.GetByID(ctx, created.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "KeepMe", reloaded.Name, "expected name to remain when UpdateSkipZeroValues is applied")
 }
 
@@ -648,7 +667,7 @@ func TestRepository_UpdateMany_AllowsZeroValues(t *testing.T) {
 
 	for _, user := range users {
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	users[0].Name = ""
@@ -657,13 +676,13 @@ func TestRepository_UpdateMany_AllowsZeroValues(t *testing.T) {
 	users[1].UpdatedAt = time.Now()
 
 	updated, err := userRepo.UpdateManyTx(ctx, db, users)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, updated, 2)
 
 	for _, original := range users {
 		reloaded, err := userRepo.GetByID(ctx, original.ID.String())
-		assert.NoError(t, err)
-		assert.Equal(t, "", reloaded.Name, "expected zero value to persist after bulk update")
+		require.NoError(t, err)
+		assert.Empty(t, reloaded.Name, "expected zero value to persist after bulk update")
 	}
 }
 
@@ -680,14 +699,14 @@ func TestRepository_Delete(t *testing.T) {
 		CompanyID: uuid.New(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = userRepo.DeleteTx(ctx, db, createdUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Attempt to retrieve the deleted user should fail
 	_, err = userRepo.GetByIDTx(ctx, db, createdUser.ID.String())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, IsRecordNotFound(err))
 }
 
@@ -705,12 +724,12 @@ func TestRepository_GetOrCreate(t *testing.T) {
 
 	// First call should create the company
 	firstCallCompany, err := companyRepo.GetOrCreateTx(ctx, db, company)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, companyID, firstCallCompany.ID)
 
 	// Second call should retrieve the existing company
 	secondCallCompany, err := companyRepo.GetOrCreateTx(ctx, db, company)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, firstCallCompany.ID, secondCallCompany.ID)
 }
 
@@ -719,7 +738,7 @@ func TestRepository_GetOrCreateTx_ReturnsExistingOnDuplicateRace(t *testing.T) {
 
 	ctx := context.Background()
 	userRepo := newTestUserRepository(db)
-	repoImpl := userRepo.(*repo[*TestUser])
+	repoImpl := requireConcreteRepo(t, userRepo)
 	repoImpl.resetScopes()
 
 	const blockerScope = "test-insert-blocker"
@@ -742,7 +761,7 @@ func TestRepository_GetOrCreateTx_ReturnsExistingOnDuplicateRace(t *testing.T) {
 			}
 		},
 	})
-	assert.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
+	require.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
 		Insert: []string{blockerScope},
 	}))
 
@@ -789,12 +808,12 @@ func TestRepository_GetOrCreateTx_ReturnsExistingOnDuplicateRace(t *testing.T) {
 		UpdatedAt: now.Add(1 * time.Millisecond),
 	}
 	_, err := userRepo.CreateTx(ctx, db, manual)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	blocker.proceed <- struct{}{}
 	wg.Wait()
 
-	assert.NoError(t, callErr)
+	require.NoError(t, callErr)
 	if assert.NotNil(t, result) {
 		assert.Equal(t, manual.Email, result.Email)
 		assert.Equal(t, manual.Name, result.Name)
@@ -816,18 +835,18 @@ func TestRepository_DeleteWhere(t *testing.T) {
 
 	for _, user := range users {
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	err := userRepo.DeleteWhereTx(ctx, db, func(q *bun.DeleteQuery) *bun.DeleteQuery {
 		return q.Where("email = ?", "user2@example.com")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that only two users remain
 	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(remainingUsers))
+	require.NoError(t, err)
+	assert.Len(t, remainingUsers, 2)
 }
 
 func TestRepository_DeleteWhere_WithoutCriteriaBlockedByDefault(t *testing.T) {
@@ -838,15 +857,15 @@ func TestRepository_DeleteWhere_WithoutCriteriaBlockedByDefault(t *testing.T) {
 
 	user := &TestUser{ID: uuid.New(), Name: "User One", Email: "user1@example.com", CompanyID: uuid.New()}
 	_, err := userRepo.CreateTx(ctx, db, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = userRepo.DeleteWhere(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsafe delete prevented")
 
 	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(remainingUsers))
+	require.NoError(t, err)
+	assert.Len(t, remainingUsers, 1)
 }
 
 func TestRepository_DeleteWhere_WithoutCriteriaAllowedWhenConfigured(t *testing.T) {
@@ -861,15 +880,15 @@ func TestRepository_DeleteWhere_WithoutCriteriaAllowedWhenConfigured(t *testing.
 	}
 	for _, user := range users {
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	err := userRepo.DeleteWhere(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	remainingUsers, err := userRepo.Raw(ctx, "SELECT * FROM test_users")
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(remainingUsers))
+	require.NoError(t, err)
+	assert.Empty(t, remainingUsers)
 }
 
 func TestRepository_TransactionCommit(t *testing.T) {
@@ -879,8 +898,8 @@ func TestRepository_TransactionCommit(t *testing.T) {
 	userRepo := newTestUserRepository(db)
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	user := &TestUser{
 		ID:        uuid.New(),
@@ -891,14 +910,14 @@ func TestRepository_TransactionCommit(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, tx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = tx.Commit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that the user exists after the transaction is committed
 	retrievedUser, err := userRepo.GetByIDTx(ctx, db, createdUser.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, createdUser.ID, retrievedUser.ID)
 	assert.Equal(t, createdUser.Name, retrievedUser.Name)
 }
@@ -910,8 +929,8 @@ func TestRepository_TransactionRollback(t *testing.T) {
 	userRepo := newTestUserRepository(db)
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	user := &TestUser{
 		ID:        uuid.New(),
@@ -922,14 +941,14 @@ func TestRepository_TransactionRollback(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	createdUser, err := userRepo.CreateTx(ctx, tx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = tx.Rollback()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that the user does not exist after the transaction is rolled back
 	_, err = userRepo.GetByIDTx(ctx, db, createdUser.ID.String())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, IsRecordNotFound(err))
 }
 
@@ -947,13 +966,13 @@ func TestRepository_Raw(t *testing.T) {
 
 	for _, user := range users {
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	query := "SELECT * FROM test_users WHERE email LIKE ?"
 	rawUsers, err := userRepo.Raw(ctx, query, "raw%")
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(rawUsers))
+	require.NoError(t, err)
+	assert.Len(t, rawUsers, 2)
 
 	for _, user := range rawUsers {
 		assert.Contains(t, user.Email, "raw")
@@ -975,7 +994,7 @@ func TestRepository_Upsert(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	upsertedUser, err := userRepo.Upsert(ctx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, upsertedUser.ID)
 	assert.Equal(t, user.Name, upsertedUser.Name)
 
@@ -983,11 +1002,11 @@ func TestRepository_Upsert(t *testing.T) {
 	upsertedUser.UpdatedAt = time.Now()
 
 	upsertedUser, err = userRepo.Upsert(ctx, upsertedUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Upsert User Updated", upsertedUser.Name)
 
 	retrievedUser, err := userRepo.GetByIdentifier(ctx, upsertedUser.Email)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, upsertedUser.Name, retrievedUser.Name)
 }
 
@@ -998,8 +1017,8 @@ func TestRepository_UpsertTx(t *testing.T) {
 	userRepo := newTestUserRepository(db)
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	user := &TestUser{
 		ID:        uuid.New(),
@@ -1010,7 +1029,7 @@ func TestRepository_UpsertTx(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	upsertedUser, err := userRepo.UpsertTx(ctx, tx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, upsertedUser.ID)
 	assert.Equal(t, user.Name, upsertedUser.Name)
 
@@ -1018,14 +1037,14 @@ func TestRepository_UpsertTx(t *testing.T) {
 	upsertedUser.UpdatedAt = time.Now()
 
 	upsertedUser, err = userRepo.UpsertTx(ctx, tx, upsertedUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "UpsertTx User Updated", upsertedUser.Name)
 
 	err = tx.Commit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	retrievedUser, err := userRepo.GetByIdentifier(ctx, upsertedUser.Email)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, upsertedUser.Name, retrievedUser.Name)
 }
 
@@ -1044,13 +1063,13 @@ func TestRepository_Upsert_Insert(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	upsertedUser, err := userRepo.Upsert(ctx, user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, upsertedUser.ID)
 	assert.Equal(t, user.Name, upsertedUser.Name)
 
 	// Verify that the user exists in the database
 	retrievedUser, err := userRepo.GetByIdentifier(ctx, user.Email)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, user.ID, retrievedUser.ID)
 }
 
@@ -1069,7 +1088,7 @@ func TestRepository_Upsert_UsesIdentifierWhenIDMissing(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	existing, err := userRepo.CreateTx(ctx, db, existing)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		Name:      "Updated Existing User",
@@ -1079,12 +1098,12 @@ func TestRepository_Upsert_UsesIdentifierWhenIDMissing(t *testing.T) {
 	}
 
 	upserted, err := userRepo.Upsert(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, existing.ID, upserted.ID)
 	assert.Equal(t, "Updated Existing User", upserted.Name)
 
 	reloaded, err := userRepo.GetByID(ctx, existing.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Updated Existing User", reloaded.Name)
 }
 
@@ -1102,7 +1121,7 @@ func TestRepository_GetOrCreate_UsesIdentifierWhenIDMissing(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err := companyRepo.CreateTx(ctx, db, existing)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestCompany{
 		Name:       "Existing Company Updated",
@@ -1111,7 +1130,7 @@ func TestRepository_GetOrCreate_UsesIdentifierWhenIDMissing(t *testing.T) {
 	}
 
 	found, err := companyRepo.GetOrCreate(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, existing.ID, found.ID)
 	assert.Equal(t, "Existing Company", found.Name)
 }
@@ -1139,7 +1158,7 @@ func TestRepository_Upsert_UsesRecordLookupResolverWhenIDAndIdentifierMissing(t 
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	existing, err := userRepo.CreateTx(ctx, db, existing)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		Name:      existing.Name,
@@ -1149,7 +1168,7 @@ func TestRepository_Upsert_UsesRecordLookupResolverWhenIDAndIdentifierMissing(t 
 	}
 
 	upserted, err := userRepo.Upsert(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, existing.ID, upserted.ID)
 	assert.Equal(t, payload.Email, upserted.Email)
 }
@@ -1177,7 +1196,7 @@ func TestRepository_GetOrCreate_UsesRecordLookupResolver(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	existing, err := userRepo.CreateTx(ctx, db, existing)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		Name:      existing.Name,
@@ -1187,7 +1206,7 @@ func TestRepository_GetOrCreate_UsesRecordLookupResolver(t *testing.T) {
 	}
 
 	found, err := userRepo.GetOrCreate(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, existing.ID, found.ID)
 	assert.Equal(t, existing.Email, found.Email)
 }
@@ -1213,7 +1232,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterID(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	primary, err := userRepo.CreateTx(ctx, db, primary)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	resolverTarget := &TestUser{
 		ID:        uuid.New(),
@@ -1224,7 +1243,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterID(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	_, err = userRepo.CreateTx(ctx, db, resolverTarget)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		ID:        primary.ID,
@@ -1235,7 +1254,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterID(t *testing.T) {
 	}
 
 	upserted, err := userRepo.Upsert(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, primary.ID, upserted.ID)
 	assert.Equal(t, 0, resolverCalls)
 }
@@ -1261,7 +1280,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterIdentifier(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	identifierTarget, err := userRepo.CreateTx(ctx, db, identifierTarget)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	resolverTarget := &TestUser{
 		ID:        uuid.New(),
@@ -1272,7 +1291,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterIdentifier(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	_, err = userRepo.CreateTx(ctx, db, resolverTarget)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		Name:      "Updated By Identifier",
@@ -1282,7 +1301,7 @@ func TestRepository_RecordLookupResolver_PriorityAfterIdentifier(t *testing.T) {
 	}
 
 	upserted, err := userRepo.Upsert(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, identifierTarget.ID, upserted.ID)
 	assert.Equal(t, 0, resolverCalls)
 }
@@ -1304,7 +1323,7 @@ func TestRepository_RecordLookupResolver_EmptyCriteriaIsNoOp(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	existing, err := userRepo.CreateTx(ctx, db, existing)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	payload := &TestUser{
 		Name:      existing.Name,
@@ -1314,14 +1333,14 @@ func TestRepository_RecordLookupResolver_EmptyCriteriaIsNoOp(t *testing.T) {
 	}
 
 	upserted, err := userRepo.Upsert(ctx, payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEqual(t, existing.ID, upserted.ID)
 
 	records, _, err := userRepo.List(ctx,
 		SelectBy("company_id", "=", existing.CompanyID.String()),
 		SelectBy("name", "=", existing.Name),
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, records, 2)
 }
 
@@ -1341,7 +1360,7 @@ func TestRepository_RecordLookupResolver_ErrorPropagation(t *testing.T) {
 		CompanyID: uuid.New(),
 		UpdatedAt: time.Now(),
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.False(t, IsRecordNotFound(err))
 	assert.True(t, goerrors.IsCategory(err, CategoryDatabase))
 }
@@ -1379,9 +1398,9 @@ func TestRepository_RecordLookupResolver_DeterministicSelection(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	_, err := userRepo.CreateTx(ctx, db, high)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = userRepo.CreateTx(ctx, db, low)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mark := time.Now()
 	upserted, err := userRepo.Upsert(ctx, &TestUser{
@@ -1389,13 +1408,13 @@ func TestRepository_RecordLookupResolver_DeterministicSelection(t *testing.T) {
 		CompanyID: companyID,
 		UpdatedAt: mark,
 	}, UpdateColumns("name", "updated_at"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, lowID, upserted.ID)
 
 	lowReloaded, err := userRepo.GetByID(ctx, lowID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	highReloaded, err := userRepo.GetByID(ctx, highID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Deterministically Updated", lowReloaded.Name)
 	assert.Equal(t, "High ID", highReloaded.Name)
 }
@@ -1412,7 +1431,7 @@ func TestRepository_GetOrCreate_ResolverUsedOnDuplicateRetryPath(t *testing.T) {
 			SelectBy("email", "=", record.Email),
 		}
 	}))
-	repoImpl := userRepo.(*repo[*TestUser])
+	repoImpl := requireConcreteRepo(t, userRepo)
 	repoImpl.resetScopes()
 
 	const blockerScope = "resolver-insert-blocker"
@@ -1435,7 +1454,7 @@ func TestRepository_GetOrCreate_ResolverUsedOnDuplicateRetryPath(t *testing.T) {
 			}
 		},
 	})
-	assert.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
+	require.NoError(t, repoImpl.SetScopeDefaults(ScopeDefaults{
 		Insert: []string{blockerScope},
 	}))
 
@@ -1480,12 +1499,12 @@ func TestRepository_GetOrCreate_ResolverUsedOnDuplicateRetryPath(t *testing.T) {
 		UpdatedAt: now.Add(1 * time.Millisecond),
 	}
 	_, err := userRepo.CreateTx(ctx, db, manual)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	blocker.proceed <- struct{}{}
 	wg.Wait()
 
-	assert.NoError(t, callErr)
+	require.NoError(t, callErr)
 	if assert.NotNil(t, result) {
 		assert.Equal(t, manual.ID, result.ID)
 		assert.Equal(t, manual.Email, result.Email)
@@ -1524,9 +1543,9 @@ func TestRepository_UpsertMany_UsesRecordLookupResolver(t *testing.T) {
 		UpdatedAt: time.Now().Add(-2 * time.Hour),
 	}
 	_, err := userRepo.CreateTx(ctx, db, first)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = userRepo.CreateTx(ctx, db, second)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	now := time.Now()
 	payload := []*TestUser{
@@ -1543,7 +1562,7 @@ func TestRepository_UpsertMany_UsesRecordLookupResolver(t *testing.T) {
 	}
 
 	records, err := userRepo.UpsertMany(ctx, payload, UpdateColumns("updated_at"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, records, 2)
 	assert.Equal(t, first.ID, records[0].ID)
 	assert.Equal(t, second.ID, records[1].ID)
@@ -1562,11 +1581,11 @@ func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
 			SelectBy("name", "=", record.Name),
 		}
 	}))
-	userRepo.(*repo[*TestUser]).resetScopes()
+	requireConcreteRepo(t, userRepo).resetScopes()
 
 	const tenantScope = "tenant"
 	userRepo.RegisterScope(tenantScope, ScopeByField(tenantScope, "company_id"))
-	assert.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
+	require.NoError(t, userRepo.SetScopeDefaults(ScopeDefaults{
 		Select: []string{tenantScope},
 	}))
 
@@ -1585,9 +1604,9 @@ func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
 		UpdatedAt:  time.Now(),
 	}
 	_, err := companyRepo.CreateTx(ctx, db, tenantCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = companyRepo.CreateTx(ctx, db, otherCompany)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	tenantUser := &TestUser{
 		ID:        uuid.New(),
@@ -1606,9 +1625,9 @@ func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
 		UpdatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	_, err = userRepo.CreateTx(ctx, db, tenantUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = userRepo.CreateTx(ctx, db, otherUser)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	updatedAt := time.Now()
 	scopeCtx := WithScopeData(ctx, tenantScope, tenantCompany.ID)
@@ -1617,14 +1636,14 @@ func TestRepository_RecordLookupResolver_RespectsSelectScopes(t *testing.T) {
 		CompanyID: tenantCompany.ID,
 		UpdatedAt: updatedAt,
 	}, UpdateColumns("updated_at"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, tenantUser.ID, upserted.ID)
 
 	unscopedCtx := WithoutDefaultScopes(ctx)
 	reloadedTenant, err := userRepo.GetByID(unscopedCtx, tenantUser.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	reloadedOther, err := userRepo.GetByID(unscopedCtx, otherUser.ID.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.True(t, reloadedTenant.UpdatedAt.Equal(updatedAt))
 	assert.False(t, reloadedOther.UpdatedAt.Equal(updatedAt))
@@ -1661,7 +1680,7 @@ func TestRepository_WithRecordLookupResolver_TypeMismatchValidation(t *testing.T
 	}
 
 	err := validator.Validate()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "resolver type mismatch")
 
 	validationErrors, hasValidationErrors := goerrors.GetValidationErrors(err)
@@ -1701,7 +1720,7 @@ func TestRepository_WithRecordLookupResolver_TypeMismatchFailsOperations(t *test
 		CompanyID: uuid.New(),
 		UpdatedAt: time.Now(),
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "resolver type mismatch")
 }
 
@@ -1750,19 +1769,19 @@ func TestRepository_List(t *testing.T) {
 			UpdatedAt: now,
 		}
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	users, total, err := userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 users")
+	require.NoError(t, err)
+	assert.Len(t, users, 25, "Should return legacy default limit of 25 users")
 	assert.Equal(t, 30, total, "Total should reflect all records")
 
 	// Test List with custom limit and offset
 	criteria := SelectPaginate(10, 5)
 	users, total, err = userRepo.List(ctx, criteria)
-	assert.NoError(t, err)
-	assert.Equal(t, 10, len(users), "Should return 10 users")
+	require.NoError(t, err)
+	assert.Len(t, users, 10, "Should return 10 users")
 	assert.Equal(t, 30, total, "Total should still reflect all records")
 
 	assert.Equal(t, "User 6", users[0].Name, "First user should be 'User 6'")
@@ -1773,8 +1792,8 @@ func TestRepository_List(t *testing.T) {
 		return q.Where("email LIKE ?", "user1%")
 	}
 	users, total, err = userRepo.List(ctx, criteria)
-	assert.NoError(t, err)
-	assert.Equal(t, 11, len(users), "Should return users with emails starting with 'user1'")
+	require.NoError(t, err)
+	assert.Len(t, users, 11, "Should return users with emails starting with 'user1'")
 	assert.Equal(t, 11, total, "Total should reflect matching records")
 }
 
@@ -1795,12 +1814,12 @@ func TestRepository_ListTx(t *testing.T) {
 			UpdatedAt: now,
 		}
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	for i := 31; i <= 35; i++ {
 		user := &TestUser{
@@ -1811,22 +1830,22 @@ func TestRepository_ListTx(t *testing.T) {
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		_, err := userRepo.CreateTx(ctx, tx, user)
-		assert.NoError(t, err)
+		_, createErr := userRepo.CreateTx(ctx, tx, user)
+		require.NoError(t, createErr)
 	}
 
 	users, total, err := userRepo.ListTx(ctx, tx)
-	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 users in tx")
+	require.NoError(t, err)
+	assert.Len(t, users, 25, "Should return legacy default limit of 25 users in tx")
 	assert.Equal(t, 35, total, "Total should include records in transaction")
 
 	err = tx.Commit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that the new records are persisted
 	users, total, err = userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Should return legacy default limit of 25 persisted users")
+	require.NoError(t, err)
+	assert.Len(t, users, 25, "Should return legacy default limit of 25 persisted users")
 	assert.Equal(t, 35, total, "Total should reflect all records")
 }
 
@@ -1847,21 +1866,21 @@ func TestRepository_List_WithConfigNoDefaultPagination(t *testing.T) {
 			UpdatedAt: now,
 		}
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	users, total, err := userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 30, len(users), "With config constructor and no repo defaults, list should return all users")
+	require.NoError(t, err)
+	assert.Len(t, users, 30, "With config constructor and no repo defaults, list should return all users")
 	assert.Equal(t, 30, total, "Total should reflect all records")
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	users, total, err = userRepo.ListTx(ctx, tx)
-	assert.NoError(t, err)
-	assert.Equal(t, 30, len(users), "With config constructor and no repo defaults, ListTx should return all users")
+	require.NoError(t, err)
+	assert.Len(t, users, 30, "With config constructor and no repo defaults, ListTx should return all users")
 	assert.Equal(t, 30, total, "ListTx total should reflect all records")
 }
 
@@ -1882,33 +1901,33 @@ func TestRepository_List_DefaultPaginationConfigured(t *testing.T) {
 			UpdatedAt: now,
 		}
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	users, total, err := userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Configured default pagination should cap list results")
+	require.NoError(t, err)
+	assert.Len(t, users, 25, "Configured default pagination should cap list results")
 	assert.Equal(t, 30, total, "Total should reflect all records")
 
 	users, total, err = userRepo.List(ctx, SelectPaginate(10, 5))
-	assert.NoError(t, err)
-	assert.Equal(t, 10, len(users), "Explicit pagination should override configured defaults")
+	require.NoError(t, err)
+	assert.Len(t, users, 10, "Explicit pagination should override configured defaults")
 	assert.Equal(t, 30, total, "Total should remain full count")
 	assert.Equal(t, "User 6", users[0].Name, "First user should be 'User 6'")
 	assert.Equal(t, "User 15", users[9].Name, "Last user should be 'User 15'")
 
 	tx, err := db.BeginTx(ctx, nil)
-	assert.NoError(t, err)
-	defer tx.Rollback()
+	require.NoError(t, err)
+	defer rollbackTx(t, tx)
 
 	users, total, err = userRepo.ListTx(ctx, tx)
-	assert.NoError(t, err)
-	assert.Equal(t, 25, len(users), "Configured default pagination should apply to ListTx")
+	require.NoError(t, err)
+	assert.Len(t, users, 25, "Configured default pagination should apply to ListTx")
 	assert.Equal(t, 30, total, "ListTx total should remain full count")
 
 	users, total, err = userRepo.ListTx(ctx, tx, SelectPaginate(8, 4))
-	assert.NoError(t, err)
-	assert.Equal(t, 8, len(users), "Explicit ListTx pagination should override configured defaults")
+	require.NoError(t, err)
+	assert.Len(t, users, 8, "Explicit ListTx pagination should override configured defaults")
 	assert.Equal(t, 30, total, "ListTx total should remain full count")
 }
 
@@ -1929,12 +1948,12 @@ func TestRepository_SetDefaultListPagination(t *testing.T) {
 			UpdatedAt: now,
 		}
 		_, err := userRepo.CreateTx(ctx, db, user)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	users, total, err := userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 30, len(users))
+	require.NoError(t, err)
+	assert.Len(t, users, 30)
 	assert.Equal(t, 30, total)
 
 	paginator, ok := userRepo.(DefaultListPaginationConfigurer)
@@ -1946,20 +1965,20 @@ func TestRepository_SetDefaultListPagination(t *testing.T) {
 	paginator.SetDefaultListPagination(12, 2)
 
 	users, total, err = userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 12, len(users))
+	require.NoError(t, err)
+	assert.Len(t, users, 12)
 	assert.Equal(t, 30, total)
 
 	users, total, err = userRepo.List(ctx, SelectPaginate(10, 5))
-	assert.NoError(t, err)
-	assert.Equal(t, 10, len(users), "Explicit pagination should override runtime default pagination")
+	require.NoError(t, err)
+	assert.Len(t, users, 10, "Explicit pagination should override runtime default pagination")
 	assert.Equal(t, 30, total)
 
 	paginator.SetDefaultListPagination(0, 0)
 
 	users, total, err = userRepo.List(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, 30, len(users), "Setting limit <= 0 should disable default pagination")
+	require.NoError(t, err)
+	assert.Len(t, users, 30, "Setting limit <= 0 should disable default pagination")
 	assert.Equal(t, 30, total)
 }
 
@@ -1982,7 +2001,7 @@ func TestRepository_GetModelFields_InvalidatesPerModelType(t *testing.T) {
 	}
 
 	rawRepo := NewRepository(db, handlers)
-	concreteRepo := rawRepo.(*repo[any])
+	concreteRepo := requireConcreteRepo(t, rawRepo)
 
 	fieldsUser := concreteRepo.GetModelFields()
 	toggle = true

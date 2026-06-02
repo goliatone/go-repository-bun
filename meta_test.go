@@ -13,7 +13,7 @@ type metaTestModel struct {
 	ID          int `bun:"id,pk"`
 	DisplayName string
 	Hidden      string `json:"-"`
-	Count       int    `json:",omitempty"`
+	Count       int    `json:"count,omitempty"`
 }
 
 func TestGenerateModelMeta_UsesTableNameFromBaseModel(t *testing.T) {
@@ -29,6 +29,6 @@ func TestGenerateModelMeta_UsesTableNameFromBaseModel(t *testing.T) {
 
 	assert.Equal(t, "ID", fieldNames["ID"].Name)
 	assert.Equal(t, "DisplayName", fieldNames["DisplayName"].Name)
-	assert.Equal(t, "Count", fieldNames["Count"].Name)
-	assert.Equal(t, "", fieldNames["Hidden"].Name)
+	assert.Equal(t, "count", fieldNames["Count"].Name)
+	assert.Empty(t, fieldNames["Hidden"].Name)
 }

@@ -10,11 +10,12 @@ import (
 	"github.com/goliatone/go-errors"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMapDatabaseError_NilError(t *testing.T) {
 	result := MapDatabaseError(nil, "postgres")
-	assert.Nil(t, result)
+	require.NoError(t, result)
 }
 
 func TestMapDatabaseError_AlreadyWrapped_ActualBehavior(t *testing.T) {
@@ -23,9 +24,9 @@ func TestMapDatabaseError_AlreadyWrapped_ActualBehavior(t *testing.T) {
 
 	var retryableResult *errors.RetryableError
 	if assert.True(t, errors.As(result, &retryableResult)) {
-		assert.Equal(t, "Database operation failed", retryableResult.BaseError.Message)
-		assert.Equal(t, CategoryDatabase, retryableResult.BaseError.Category)
-		assert.Equal(t, wrappedErr, retryableResult.BaseError.Source)
+		assert.Equal(t, "Database operation failed", retryableResult.Message)
+		assert.Equal(t, CategoryDatabase, retryableResult.Category)
+		assert.Equal(t, wrappedErr, retryableResult.Source)
 	}
 
 	retryableErr := errors.NewRetryable("already wrapped", errors.CategoryOperation)
@@ -33,9 +34,9 @@ func TestMapDatabaseError_AlreadyWrapped_ActualBehavior(t *testing.T) {
 
 	var retryableResult2 *errors.RetryableError
 	if assert.True(t, errors.As(result2, &retryableResult2)) {
-		assert.Equal(t, "Database operation failed", retryableResult2.BaseError.Message)
-		assert.Equal(t, CategoryDatabase, retryableResult2.BaseError.Category)
-		assert.Equal(t, retryableErr, retryableResult2.BaseError.Source)
+		assert.Equal(t, "Database operation failed", retryableResult2.Message)
+		assert.Equal(t, CategoryDatabase, retryableResult2.Category)
+		assert.Equal(t, retryableErr, retryableResult2.Source)
 	}
 }
 
@@ -96,11 +97,11 @@ func TestMapCommonDatabaseErrors(t *testing.T) {
 			result := MapCommonDatabaseErrors(tt.inputError)
 
 			if tt.expectedNil {
-				assert.Nil(t, result)
+				require.NoError(t, result)
 				return
 			}
 
-			assert.NotNil(t, result)
+			require.Error(t, result)
 
 			var retryableErr *errors.RetryableError
 			assert.True(t, errors.As(result, &retryableErr))
@@ -116,10 +117,10 @@ func TestMapCommonDatabaseErrors(t *testing.T) {
 			}
 
 			if tt.expectedText != "" {
-				assert.Equal(t, tt.expectedText, retryableErr.BaseError.TextCode)
+				assert.Equal(t, tt.expectedText, retryableErr.TextCode)
 			}
 			if tt.expectedCode != 0 {
-				assert.Equal(t, tt.expectedCode, retryableErr.BaseError.Code)
+				assert.Equal(t, tt.expectedCode, retryableErr.Code)
 			}
 		})
 	}
@@ -185,7 +186,7 @@ func TestMapPostgresErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := MapPostgresErrors(tt.pqError)
-			assert.NotNil(t, result)
+			require.Error(t, result)
 
 			var retryableErr *errors.RetryableError
 			assert.True(t, errors.As(result, &retryableErr))
@@ -196,14 +197,14 @@ func TestMapPostgresErrors(t *testing.T) {
 				assert.False(t, retryableErr.IsRetryable())
 			}
 
-			assert.Equal(t, tt.expectedText, retryableErr.BaseError.TextCode)
+			assert.Equal(t, tt.expectedText, retryableErr.TextCode)
 			if tt.expectedCode != 0 {
-				assert.Equal(t, tt.expectedCode, retryableErr.BaseError.Code)
+				assert.Equal(t, tt.expectedCode, retryableErr.Code)
 			}
 
 			if tt.expectedMeta != nil {
 				for key, value := range tt.expectedMeta {
-					assert.Equal(t, value, retryableErr.BaseError.Metadata[key])
+					assert.Equal(t, value, retryableErr.Metadata[key])
 				}
 			}
 
@@ -276,11 +277,11 @@ func TestMapMSSQLErrors_Working(t *testing.T) {
 			result := MapMSSQLErrors(err)
 
 			if !tt.shouldMatch {
-				assert.Nil(t, result)
+				require.NoError(t, result)
 				return
 			}
 
-			assert.NotNil(t, result, fmt.Sprintf("Expected result for '%s' but got nil", tt.errorMsg))
+			require.Error(t, result, "Expected result for %q but got nil", tt.errorMsg)
 
 			var retryableErr *errors.RetryableError
 			if assert.True(t, errors.As(result, &retryableErr)) {
@@ -292,8 +293,8 @@ func TestMapMSSQLErrors_Working(t *testing.T) {
 					assert.False(t, retryableErr.IsRetryable())
 				}
 
-				assert.Equal(t, tt.expectedText, retryableErr.BaseError.TextCode)
-				assert.Equal(t, tt.expectedCode, retryableErr.BaseError.Code)
+				assert.Equal(t, tt.expectedText, retryableErr.TextCode)
+				assert.Equal(t, tt.expectedCode, retryableErr.Code)
 			}
 		})
 	}

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	stderrors "errors"
 	"math"
 	"testing"
 	"time"
@@ -115,13 +114,13 @@ func TestApplyMapPatch_UnknownAndAllowlistErrors(t *testing.T) {
 		"unknown": "value",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrUnknownPatchField)
+	require.ErrorIs(t, err, ErrUnknownPatchField)
 
 	_, _, err = ApplyMapPatch(record, map[string]any{
 		"name": "After",
 	}, WithPatchAllowedFields("count"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrPatchFieldNotAllowed)
+	require.ErrorIs(t, err, ErrPatchFieldNotAllowed)
 }
 
 func TestApplyMapPatch_DenyPrimaryKey(t *testing.T) {
@@ -131,7 +130,7 @@ func TestApplyMapPatch_DenyPrimaryKey(t *testing.T) {
 		"id": uuid.New().String(),
 	}, WithPatchDenyPrimaryKey())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrPatchPrimaryKeyNotAllowed)
+	require.ErrorIs(t, err, ErrPatchPrimaryKeyNotAllowed)
 }
 
 func TestUpdateCriteriaForMapPatch(t *testing.T) {
@@ -221,7 +220,7 @@ func TestUpdateByIDWithMapPatch_DetectsNotFound(t *testing.T) {
 
 func TestRecordNotFoundSentinelSupportsErrorsIs(t *testing.T) {
 	err := NewRecordNotFound()
-	assert.True(t, stderrors.Is(err, ErrRecordNotFound))
+	require.ErrorIs(t, err, ErrRecordNotFound)
 	assert.True(t, IsRecordNotFound(err))
 }
 

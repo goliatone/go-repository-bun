@@ -1219,7 +1219,7 @@ func resolveRecordLookupResolver[T any](cfg *repoConfig) (RecordLookupResolver[T
 		return resolver, nil
 	}
 
-	expected := reflect.TypeOf((*T)(nil)).Elem()
+	expected := reflect.TypeFor[T]()
 	actual := cfg.recordLookupResolverType
 	if actual == nil {
 		actual = reflect.TypeOf(cfg.recordLookupResolver)

@@ -52,7 +52,7 @@ normalize_output() {
     sed "s#${repo_root}/##g" \
         | sed 's#^\./##' \
         | sed 's/^[[:space:]]*//' \
-        | awk 'NF' \
+        | awk 'NF && $0 != "0 issues."' \
         | sort -u
 }
 

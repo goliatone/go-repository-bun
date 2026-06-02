@@ -61,7 +61,7 @@ func MapDatabaseError(err error, driver string) error {
 		wrapped := errors.NewRetryable("Database operation failed", CategoryDatabase).
 			WithCode(errors.CodeInternal).
 			WithTextCode("DATABASE_ERROR")
-		wrapped.BaseError.Source = err
+		wrapped.Source = err
 		return wrapped
 	}
 
@@ -163,13 +163,13 @@ func MapPostgresErrors(err error) error {
 
 func MapCommonDatabaseErrors(err error) error {
 	switch {
-	case err == sql.ErrNoRows:
+	case errors.Is(err, sql.ErrNoRows):
 		return newRecordNotFoundErrorWithSource(err)
-	case err == sql.ErrTxDone:
+	case errors.Is(err, sql.ErrTxDone):
 		return errors.NewNonRetryable("Transaction has already been committed or rolled back", CategoryDatabase).
 			WithCode(errors.CodeBadRequest).
 			WithTextCode("TRANSACTION_DONE")
-	case err == sql.ErrConnDone:
+	case errors.Is(err, sql.ErrConnDone):
 		return newRetryableDatabaseConnectionError("Database connection is closed").
 			WithTextCode("CONNECTION_CLOSED")
 	case strings.Contains(err.Error(), "connection refused"):
@@ -317,10 +317,10 @@ func newRecordNotFoundErrorWithSource(source error) *errors.RetryableError {
 		WithTextCode("RECORD_NOT_FOUND")
 
 	if source == nil {
-		notFoundErr.BaseError.Source = ErrRecordNotFound
+		notFoundErr.Source = ErrRecordNotFound
 		return notFoundErr
 	}
 
-	notFoundErr.BaseError.Source = stderrors.Join(ErrRecordNotFound, source)
+	notFoundErr.Source = stderrors.Join(ErrRecordNotFound, source)
 	return notFoundErr
 }

@@ -25,6 +25,22 @@ A generic implementation of a data access layer using Go generics and [Bun ORM](
 go get github.com/goliatone/go-repository-bun
 ```
 
+## Development Quality
+
+This repository uses a taskfile-based Go quality workflow:
+
+```sh
+./taskfile go:tools:all
+./taskfile go:fmt:check
+./taskfile go:test
+./taskfile go:lint:baseline
+./taskfile go:quality:baseline
+```
+
+`golangci-lint`, `govulncheck`, and `gosec` are managed through `./taskfile`.
+Existing lint and security findings are tracked in `ops/quality/baselines/` so
+new work can be checked without requiring a full backlog cleanup first.
+
 ## Usage
 
 ### Import the package

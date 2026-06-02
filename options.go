@@ -43,7 +43,7 @@ func WithRecordLookupResolver[T any](resolver RecordLookupResolver[T]) RepoOptio
 		}
 
 		cfg.recordLookupResolver = resolver
-		cfg.recordLookupResolverType = reflect.TypeOf((*T)(nil)).Elem()
+		cfg.recordLookupResolverType = reflect.TypeFor[T]()
 	}
 }
 
@@ -212,7 +212,7 @@ func validateQueryHook(hook bun.QueryHook) error {
 	}
 
 	value := reflect.ValueOf(hook)
-	if value.Kind() == reflect.Ptr && value.IsNil() {
+	if value.Kind() == reflect.Pointer && value.IsNil() {
 		return ErrQueryHookNilPointer
 	}
 
@@ -232,7 +232,7 @@ func queryHookKey(hook bun.QueryHook) (string, bool) {
 	}
 
 	value := reflect.ValueOf(hook)
-	if value.Kind() == reflect.Ptr && !value.IsNil() {
+	if value.Kind() == reflect.Pointer && !value.IsNil() {
 		return fmt.Sprintf("%T:%x", hook, value.Pointer()), true
 	}
 
